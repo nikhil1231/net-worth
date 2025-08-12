@@ -4,3 +4,5 @@ __pycache__
 sources.py
 .env
 tmp
+credentials.json
+token.pickle
