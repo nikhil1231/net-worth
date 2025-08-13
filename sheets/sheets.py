@@ -19,3 +19,6 @@ def get_exchange_symbols():
 
 def write_exchange_values(prices: List[float]):
   write_column_values('E', prices)
+
+def write_hl_values(holdings: List[List[str]]):
+  sheets_manager.edit_range('data!G2:N100', holdings)
