@@ -22,3 +22,9 @@ def write_exchange_values(prices: List[float]):
 
 def write_hl_values(holdings: List[List[str]]):
   sheets_manager.edit_range('data!G2:N100', holdings)
+
+def get_btc_addresses():
+  return read_column_values('P')
+
+def write_btc_amounts(vals):
+  return write_column_values('Q', vals)
