@@ -28,3 +28,9 @@ def get_btc_addresses():
 
 def write_btc_amounts(vals):
   return write_column_values('Q', vals)
+
+def get_eth_addresses():
+  return read_column_values('S')
+
+def write_eth_amounts(vals):
+  return write_column_values('T', vals)

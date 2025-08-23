@@ -9,9 +9,9 @@ async def run_async(f, *args):
   loop = asyncio.get_event_loop()
   return await loop.run_in_executor(None, f, *args)
 
-async def get_async(url):
+async def get_async(url, params=None):
   def f():
-    res = requests.get(url)
+    res = requests.get(url, params=params)
     return res.json()
   return await run_async(f)
 
