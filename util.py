@@ -2,6 +2,7 @@ import asyncio
 import os
 import dotenv
 import requests
+import json
 
 dotenv.load_dotenv()
 
@@ -12,6 +13,15 @@ async def run_async(f, *args):
 async def get_async(url, params=None):
   def f():
     res = requests.get(url, params=params)
+    return res.json()
+  return await run_async(f)
+
+async def post_async(url, params=None, data=None):
+  def f():
+    headers = {
+      'content-type': 'application/json'
+    }
+    res = requests.post(url, params=params, data=json.dumps(data), headers=headers)
     return res.json()
   return await run_async(f)
 

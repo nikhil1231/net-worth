@@ -34,3 +34,9 @@ def get_eth_addresses():
 
 def write_eth_amounts(vals):
   return write_column_values('T', vals)
+
+def get_sol_addresses():
+  return read_column_values('V')
+
+def write_sol_amounts(vals):
+  return write_column_values('W', vals)

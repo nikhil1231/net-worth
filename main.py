@@ -25,21 +25,25 @@ async def update_hl():
 
 async def update_wallet_balances():
   print("updating wallet amounts")
-  await asyncio.gather(*[update_btc_balances(), update_eth_balances()])
+  await asyncio.gather(*[update_btc_balances(), update_eth_balances(), update_sol_balances()])
 
 async def update_btc_balances():
   print("updating btc amounts")
   btc_addrs = sheets.get_btc_addresses()
-
   btc_vals = await balances.get_btc_balances(btc_addrs)
   sheets.write_btc_amounts(btc_vals)
 
 async def update_eth_balances():
   print("updating eth amounts")
   eth_addrs = sheets.get_eth_addresses()
-
   eth_vals = await balances.get_eth_balances(eth_addrs)
   sheets.write_eth_amounts(eth_vals)
+
+async def update_sol_balances():
+  print("updating sol amounts")
+  sol_addrs = sheets.get_sol_addresses()
+  sol_vals = await balances.get_sol_balances(sol_addrs)
+  sheets.write_sol_amounts(sol_vals)
 
 async def main():
   tasks = [update_prices(), update_exchange_values(), update_hl(), update_wallet_balances()]

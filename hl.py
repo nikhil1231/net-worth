@@ -124,7 +124,6 @@ def login_step_two(session, step_one_html):
     data[f'secure-number[{i+1}]'] = secure_number[idx-1]
 
   res = session.post('https://online.hl.co.uk/my-accounts/login-step-two', headers=FORM_HEADERS, data=data)
-  print(res.status_code)
   return res.text
 
 def get_user(session):

@@ -21,3 +21,21 @@ async def get_eth_balances(addrs: List[str]):
   res = await util.get_async('https://api.etherscan.io/v2/api', params=params)
 
   return (int(r['balance']) / 1e18 for r in res['result'])
+
+async def get_sol_balances(addrs: List[str]):
+  return await asyncio.gather(*[get_sol_balance(addr) for addr in addrs])
+
+async def get_sol_balance(addr: str):
+  data = {
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "getBalance",
+    "params": [
+      addr,
+      {
+        "commitment": "finalized"
+      }
+    ]
+  }
+  res = await util.post_async('https://api.mainnet-beta.solana.com', data=data)
+  return res['result']['value'] / 1e9
