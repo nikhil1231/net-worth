@@ -3,7 +3,7 @@ from typing import List
 import asyncio
 
 async def get_btc_balances(addrs: List[str]):
-  return await asyncio.gather(*[get_btc_balance(addr) for addr in addrs])
+  return await util.gather(get_btc_balance, addrs)
 
 async def get_btc_balance(addr: str):
   val = await util.get_async('https://blockchain.info/q/addressbalance/' + addr)
@@ -11,19 +11,28 @@ async def get_btc_balance(addr: str):
 
 async def get_eth_balances(addrs: List[str]):
   params = {
-    'chainid': 1,
-    'module': 'account',
     'action': 'balancemulti',
-    'address': ','.join(addrs),
-    'tag': 'latest',
-    'apikey': util.get_env_var('ETHERSCAN'),
+    'address': ','.join(addrs)
   }
-  res = await util.get_async('https://api.etherscan.io/v2/api', params=params)
+  res = await _etherscan_call(params)
 
   return (int(r['balance']) / 1e18 for r in res['result'])
 
+async def get_usdc_balances(addrs: List[str]):
+  return await util.gather(get_usdc_balance, addrs)
+
+async def get_usdc_balance(addr: str):
+  params = {
+    'action': 'tokenbalance',
+    'contractAddress': '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48',
+    'address': addr
+  }
+  res = await _etherscan_call(params)
+
+  return int(res['result']) / 1e6
+
 async def get_sol_balances(addrs: List[str]):
-  return await asyncio.gather(*[get_sol_balance(addr) for addr in addrs])
+  return await util.gather(get_sol_balance, addrs)
 
 async def get_sol_balance(addr: str):
   data = {
@@ -39,3 +48,13 @@ async def get_sol_balance(addr: str):
   }
   res = await util.post_async('https://api.mainnet-beta.solana.com', data=data)
   return res['result']['value'] / 1e9
+
+
+async def _etherscan_call(add_params = {}):
+  params = {
+    'chainid': 1,
+    'module': 'account',
+    'tag': 'latest',
+    'apikey': util.get_env_var('ETHERSCAN'),
+  } | add_params
+  return await util.get_async('https://api.etherscan.io/v2/api', params=params)

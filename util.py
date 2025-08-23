@@ -10,6 +10,9 @@ async def run_async(f, *args):
   loop = asyncio.get_event_loop()
   return await loop.run_in_executor(None, f, *args)
 
+async def gather(f, args):
+  return await asyncio.gather(*[f(arg) for arg in args])
+
 async def get_async(url, params=None):
   def f():
     res = requests.get(url, params=params)

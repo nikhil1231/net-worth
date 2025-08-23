@@ -39,6 +39,9 @@ async def update_eth_balances():
   eth_vals = await balances.get_eth_balances(eth_addrs)
   sheets.write_eth_amounts(eth_vals)
 
+  usdc_vals = await balances.get_usdc_balances(eth_addrs)
+  sheets.write_usdc_amounts(usdc_vals)
+
 async def update_sol_balances():
   print("updating sol amounts")
   sol_addrs = sheets.get_sol_addresses()
