@@ -31,7 +31,7 @@ export function HoldingsTreemap({ summary }: { summary: Summary }) {
         <h3><span className="emoji">🧱</span> Everything you own</h3>
         <span className="muted small">{tiles.length} holdings, sized by value</span>
       </header>
-      <ChartFrame><ResponsiveContainer width="100%" height={340}>
+      <ChartFrame hover><ResponsiveContainer width="100%" height={340}>
         <Treemap
           data={tiles}
           dataKey="size"
