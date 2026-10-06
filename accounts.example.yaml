@@ -1,0 +1,77 @@
+# Copy to accounts.yaml (gitignored). ${VARS} are read from .env.
+settings:
+  tick_minutes: 15        # how often the scheduler wakes up and re-prices everything
+  default_interval: 15    # minutes between fetches for accounts without their own `interval`
+  # data_dir: data        # SQLite DB, cookies and OAuth tokens
+
+# Each account: name (unique, shown on the dashboard), type (connector), category
+# (any label - used to group the dashboard), optional interval (minutes), params.
+accounts:
+  - name: HL Stocks & Shares ISA
+    type: hl
+    category: investments
+    interval: 240         # HL login is slow and rate limited - a few times a day is plenty
+    params:
+      account_id: 22
+      username: ${HL_USERNAME}
+      date_of_birth: ${HL_DOB}
+      password: ${HL_PASSWORD}
+      secure_number: ${HL_SECURE_NUMBER}
+      look_through:       # where to find country/sector weights for funds (see networth/classify.py)
+        EMIM: {yahoo: EMIM.L, ishares: 264659}
+        XMWX: {yahoo: XMWX.L, xtrackers: IE0006WW1TQ4}
+
+  - name: Binance
+    type: exchange
+    category: crypto
+    params:
+      exchange: binance
+      api_key: ${BINANCE_API_KEY}
+      secret: ${BINANCE_SECRET_KEY}
+      # wallets: [spot, funding]
+
+  - name: Coinbase
+    type: exchange
+    category: crypto
+    params:
+      exchange: coinbase
+      api_key: ${COINBASE_API_KEY}        # CDP key name: organizations/.../apiKeys/...
+      secret: ${COINBASE_API_SECRET}      # PEM private key, quoted in .env with \n newlines
+
+  - name: BTC cold wallet
+    type: bitcoin
+    category: crypto
+    params:
+      addresses: [bc1q...]
+
+  - name: ETH wallet
+    type: evm
+    category: crypto
+    params:
+      addresses: ['0x...']
+      # chain_id: 1
+      # native_symbol: ETH
+      # tokens:               # default is USDC on mainnet
+      #   - {symbol: USDC, contract: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48', decimals: 6}
+
+  - name: SOL wallet
+    type: solana
+    category: crypto
+    params:
+      addresses: [...]
+      tokens:
+        - {symbol: USDC, mint: EPjFWdd5AufLSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v}
+
+  - name: Monzo
+    type: monzo
+    category: cash
+    interval: 60
+    params:
+      client_id: ${MONZO_CLIENT_ID}
+      client_secret: ${MONZO_CLIENT_SECRET}
+
+  - name: Santander
+    type: manual
+    category: cash
+    params:
+      value: 1000.00

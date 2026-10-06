@@ -1,0 +1,12 @@
+.git/
+.venv/
+.pytest_cache/
+__pycache__/
+*.swp
+.env
+accounts.yaml
+data/
+tests/
+deploy/
+frontend/node_modules/
+networth/web/static/

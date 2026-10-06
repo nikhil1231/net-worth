@@ -1,8 +1,10 @@
 .venv
 __pycache__
+.pytest_cache
 
-sources.py
 .env
-tmp
-credentials.json
-token.pickle
+accounts.yaml
+data/
+node_modules/
+networth/web/static/
+work/
