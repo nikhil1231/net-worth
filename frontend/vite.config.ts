@@ -7,6 +7,7 @@ export default defineConfig({
   plugins: [react()],
   build: { outDir: '../networth/web/static', emptyOutDir: true, chunkSizeWarningLimit: 1000 },
   server: {
+    host: true,  // listen on the LAN, not just localhost
     proxy: { '/api': process.env.NETWORTH_API ?? 'http://127.0.0.1:8000' },
   },
 })
