@@ -54,31 +54,3 @@ export function useStoredState<T>(key: string, initial: T) {
 
   return [value, setValue] as const
 }
-
-/** Animates towards `target` - for the big numbers. */
-export function useCountUp(target: number, ms = 900) {
-  const [value, setValue] = useState(target)
-  const from = useRef(0)
-
-  useEffect(() => {
-    if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
-      setValue(target)
-      from.current = target
-      return
-    }
-    const start = performance.now()
-    const begin = from.current
-    let frame = 0
-    const tick = (t: number) => {
-      const p = Math.min(1, (t - start) / ms)
-      const eased = 1 - Math.pow(1 - p, 4)
-      setValue(begin + (target - begin) * eased)
-      if (p < 1) frame = requestAnimationFrame(tick)
-      else from.current = target
-    }
-    frame = requestAnimationFrame(tick)
-    return () => cancelAnimationFrame(frame)
-  }, [target, ms])
-
-  return value
-}

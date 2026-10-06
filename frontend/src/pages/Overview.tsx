@@ -3,19 +3,18 @@ import { Link } from 'react-router'
 import type { Summary } from '../api'
 import { categoryStyle } from '../colors'
 import { BreakdownCard } from '../components/BreakdownCard'
+import { CountUp } from '../components/CountUp'
 import { HistoryChart } from '../components/HistoryChart'
 import { HoldingsTreemap } from '../components/HoldingsTreemap'
 import { MiniDonut } from '../components/MiniDonut'
 import { RefreshButton } from '../components/RefreshButton'
 import { ago, greeting, pct, signedPct } from '../format'
-import { useCountUp } from '../hooks'
 import type { Slice } from '../scenario'
 
 type Props = { summary: Summary; onRefreshed: (s: Summary) => void }
 
 export function Overview({ summary, onRefreshed }: Props) {
   const { money, signedMoney } = useMoney()
-  const total = useCountUp(summary.total)
   const categories = Object.entries(summary.categories)
 
   const categoryIndex = (c: string) => categories.findIndex(([k]) => k === c)
@@ -45,7 +44,7 @@ export function Overview({ summary, onRefreshed }: Props) {
         <div className="hero-content">
           <p className="hero-hello">{greeting()} 👋</p>
           <p className="hero-label">You're worth</p>
-          <h1 className="hero-total">{money(total)}</h1>
+          <h1 className="hero-total"><CountUp value={summary.total} format={money} /></h1>
           <div className="hero-changes">
             {Object.entries(summary.changes).map(([label, c]) => (
               <span key={label} className={`change-chip ${c.value >= 0 ? 'up' : 'down'}`} title={`vs ${new Date(c.ts).toLocaleString('en-GB')}`}>

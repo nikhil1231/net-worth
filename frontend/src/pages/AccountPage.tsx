@@ -6,6 +6,7 @@ import { Bar, BarChart, CartesianGrid, ResponsiveContainer, XAxis, YAxis } from 
 import { api, type Summary } from '../api'
 import { categoryStyle, KIND_EMOJI } from '../colors'
 import { BreakdownCard } from '../components/BreakdownCard'
+import { CountUp } from '../components/CountUp'
 import { DetailsModal } from '../components/DetailsModal'
 import { WalletBreakdown } from '../components/WalletBreakdown'
 import { HoldingsTable } from '../components/HoldingsTable'
@@ -13,7 +14,7 @@ import { RefreshButton } from '../components/RefreshButton'
 import { CloseButton, Modal } from '../components/Modal'
 import { flag, sectorEmoji, sectorShort } from '../flags'
 import { ago, pct } from '../format'
-import { useAsync, useCountUp, useStoredState } from '../hooks'
+import { useAsync, useStoredState } from '../hooks'
 import { breakdown, buildRows, components, EMPTY_SCENARIO, isEmpty, type Row, type Scenario, type Slice } from '../scenario'
 
 export function AccountPage({ onRefreshed }: { onRefreshed: (summary: Summary) => void }) {
@@ -31,7 +32,6 @@ export function AccountPage({ onRefreshed }: { onRefreshed: (summary: Summary) =
   const visible = rows.filter(r => !r.hidden)
   const sandboxTotal = visible.reduce((s, r) => s + r.value, 0)
   const actualTotal = visible.reduce((s, r) => s + r.actualValue, 0)
-  const shownTotal = useCountUp(sandboxTotal)
   const hasEdits = rows.some(r => r.edited)
   const hiddenCount = rows.filter(r => r.hidden).length
   const classified = detail && Object.keys(detail.classifications).length > 0
