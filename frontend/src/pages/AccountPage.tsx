@@ -60,7 +60,7 @@ export function AccountPage({ onRefreshed }: { onRefreshed: (summary: Summary) =
         <div className="hero-content">
           <p className="hero-hello">{style.emoji} {detail.category}</p>
           <h1 className="hero-name">{wallet ? `${wallet.slice(0, 7)}…${wallet.slice(-5)}` : detail.name}</h1>
-          <h2 className="hero-total small">{money(shownTotal)}</h2>
+          <h2 className="hero-total small"><CountUp value={sandboxTotal} format={money} /></h2>
           {hasEdits && <p className="hero-sandbox">✏️ Sandbox values · actually {money(actualTotal)}</p>}
           <div className="hero-foot">
             <span>
@@ -182,7 +182,7 @@ function Stat({ emoji, label, value, sub }: { emoji: string; label: string; valu
 }
 
 function BeforeAfter({ rows }: { rows: Slice[] }) {
-  const { money, moneyCompact } = useMoney()
+  const { money, moneyCompact, hidden } = useMoney()
   const data = rows.slice(0, 12).map(r => ({ label: r.label === 'GBP' ? 'Cash' : r.label, Actual: r.actualValue, Sandbox: r.value }))
   return (
     <section className="card">
@@ -194,7 +194,7 @@ function BeforeAfter({ rows }: { rows: Slice[] }) {
         <BarChart data={data} barGap={4} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
           <CartesianGrid vertical={false} stroke="var(--grid)" strokeDasharray="4 6" />
           <XAxis dataKey="label" tick={{ fill: 'var(--muted)', fontSize: 12 }} axisLine={false} tickLine={false} interval={0} />
-          <YAxis tickFormatter={moneyCompact} tick={{ fill: 'var(--muted)', fontSize: 12 }} axisLine={false} tickLine={false} width={64} />
+          <YAxis tickFormatter={moneyCompact} tick={hidden ? false : { fill: 'var(--muted)', fontSize: 12 }} axisLine={false} tickLine={false} width={hidden ? 8 : 64} />
           <Tooltip
             cursor={{ fill: 'var(--hover)' }}
             content={({ active, payload, label }) =>

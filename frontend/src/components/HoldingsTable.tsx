@@ -6,7 +6,7 @@ import { api, type Quote } from '../api'
 import { KIND_EMOJI } from '../colors'
 import { flag } from '../flags'
 import { useStoredState } from '../hooks'
-import { pct, units } from '../format'
+import { pct } from '../format'
 import type { AddedHolding, Row, Scenario } from '../scenario'
 
 type Props = {
@@ -25,7 +25,7 @@ const DUST_GBP = 1
 const isDust = (r: Row) => !r.added && !r.edited && !r.unpriced && Math.abs(r.actualValue) < DUST_GBP
 
 export function HoldingsTable({ accountName, rows, setScenario, editing, canAdd, onDetails, dustToggle = false }: Props) {
-  const { money, moneyExact, signedMoney, symbol, currency, toDisplay, toGBP } = useMoney()
+  const { money, quote, signedMoney, symbol, currency, toDisplay, toGBP, units, hidden } = useMoney()
   const [hideDust, setHideDust] = useStoredState('networth:hide-dust', true)
   const visibleTotal = rows.filter(r => !r.hidden).reduce((s, r) => s + r.value, 0)
   const dustCount = dustToggle ? rows.filter(isDust).length : 0
@@ -103,7 +103,7 @@ export function HoldingsTable({ accountName, rows, setScenario, editing, canAdd,
                             <Link to={`/accounts/${encodeURIComponent(accountName)}/wallets/${encodeURIComponent(location.wallet)}`}>
                               {location.wallet.slice(0, 7)}…{location.wallet.slice(-5)} ↗
                             </Link>
-                            <span className="muted small">{location.quantity.toLocaleString('en-GB', { maximumFractionDigits: 6 })} {row.asset}{location.name && location.name !== location.chain ? ` · ${location.name}` : ''}</span>
+                            <span className="muted small">{hidden ? units(location.quantity) : location.quantity.toLocaleString('en-GB', { maximumFractionDigits: 6 })} {row.asset}{location.name && location.name !== location.chain ? ` · ${location.name}` : ''}</span>
                           </span>)}
                         </Popover>
                       ) : (
@@ -130,16 +130,16 @@ export function HoldingsTable({ accountName, rows, setScenario, editing, canAdd,
                     {c?.error && <div className="error-text small">Couldn't look up exposure</div>}
                   </td>
                   <td className="num">
-                    {editing && !row.unpriced && row.asset !== 'GBP' ? (
+                    {editing && !hidden && !row.unpriced && row.asset !== 'GBP' ? (
                       <NumberInput value={row.quantity} onCommit={q => setQuantity(row, q)} label={`${row.asset} units`} />
                     ) : (
-                      row.unpriced ? row.quantity.toLocaleString('en-GB', { maximumFractionDigits: 6 }) : units(row.quantity)
+                      row.unpriced && !hidden ? row.quantity.toLocaleString('en-GB', { maximumFractionDigits: 6 }) : units(row.quantity)
                     )}
                     {row.edited && !row.added && <div className="was">was {units(row.actualQuantity)}</div>}
                   </td>
-                  <td className="num muted">{row.unpriced || row.asset === 'GBP' ? '—' : moneyExact(row.price)}</td>
+                  <td className="num muted">{row.unpriced || row.asset === 'GBP' ? '—' : quote(row.price)}</td>
                   <td className="num strong">
-                    {row.unpriced ? '—' : editing ? (
+                    {row.unpriced ? '—' : editing && !hidden ? (
                       <NumberInput key={currency} value={toDisplay(row.value)} onCommit={v => row.price && setQuantity(row, toGBP(v) / row.price)} label={`${row.asset} value in ${currency}`} prefix={symbol} />
                     ) : (
                       money(row.value)
@@ -173,7 +173,7 @@ export function HoldingsTable({ accountName, rows, setScenario, editing, canAdd,
         <div className="dust-toggle">
           <label className="check">
             <input type="checkbox" checked={hideDust} onChange={e => setHideDust(e.target.checked)} />
-            <span>Hide dust <small>{dustCount} under {money(DUST_GBP)}</small></span>
+            <span>Hide dust <small>{dustCount} under {quote(DUST_GBP)}</small></span>
           </label>
         </div>
       )}
@@ -216,7 +216,7 @@ type Lookup = { ticker: string; busy: boolean; quote?: Quote; error?: string }
 
 /** Looks the ticker up as soon as you leave its box, so the price is there by the time you press Add. */
 function AddHolding({ existing, setScenario }: { existing: string[]; setScenario: Props['setScenario'] }) {
-  const { moneyExact, symbol, currency, factor, toDisplay, toGBP } = useMoney()
+  const { quote, symbol, currency, factor, toDisplay, toGBP, units } = useMoney()
   const [ticker, setTicker] = useState('')
   const [amount, setAmount] = useState(() => String(toDisplay(Number(DEFAULT_AMOUNT))))
   const previousFactor = useRef(factor)
@@ -300,7 +300,7 @@ function AddHolding({ existing, setScenario }: { existing: string[]; setScenario
       </button>
       {current?.quote && (
         <span className="lookup small">
-          ✓ <b>{current.quote.name}</b> · {moneyExact(current.quote.price_gbp!)}
+          ✓ <b>{current.quote.name}</b> · {quote(current.quote.price_gbp!)}
           {Number.isFinite(value) && value > 0 && <span className="muted"> · {units(value / current.quote.price_gbp!)} units</span>}
         </span>
       )}

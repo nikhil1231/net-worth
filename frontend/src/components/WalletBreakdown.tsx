@@ -1,6 +1,6 @@
 import type { AccountDetail } from '../api'
 import type { Slice } from '../scenario'
-import { units } from '../format'
+import { useMoney } from '../Currency'
 import { BreakdownCard } from './BreakdownCard'
 
 const short = (address: string) => `${address.slice(0, 7)}…${address.slice(-5)}`
@@ -12,6 +12,7 @@ function slices(values: Record<string, number>): Slice[] {
 }
 
 export function WalletBreakdown({ detail }: { detail: AccountDetail }) {
+  const { units } = useMoney()
   const wallets = detail.wallets ?? []
   const parent = detail.parent_account ?? detail.name
   const root = `/accounts/${encodeURIComponent(parent)}`

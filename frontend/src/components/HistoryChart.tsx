@@ -16,7 +16,7 @@ const RANGES: { label: string; days: number | null }[] = [
 ]
 
 export function HistoryChart() {
-  const { money, moneyCompact, signedMoney } = useMoney()
+  const { money, moneyCompact, signedMoney, hidden } = useMoney()
   const [range, setRange] = useState(3)
   const [group, setGroup] = useState<'category' | 'account'>('category')
   const days = RANGES[range].days
@@ -89,8 +89,8 @@ export function HistoryChart() {
                 axisLine={false} tickLine={false} minTickGap={40}
               />
               <YAxis
-                tickFormatter={moneyCompact} tick={{ fill: 'var(--muted)', fontSize: 12 }}
-                axisLine={false} tickLine={false} width={64}
+                tickFormatter={moneyCompact} tick={hidden ? false : { fill: 'var(--muted)', fontSize: 12 }}
+                axisLine={false} tickLine={false} width={hidden ? 8 : 64}
               />
               <Tooltip
                 cursor={{ stroke: 'var(--ink)', strokeOpacity: 0.25, strokeWidth: 2 }}

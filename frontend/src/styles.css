@@ -817,5 +817,12 @@ details.field[open] > summary { margin-bottom: 6px; }
 .currency-toggle button { white-space: nowrap; }
 .currency-toggle button:disabled { opacity: .45; cursor: wait; }
 @media (max-width: 640px) { .currency-toggle { margin-left: 0; } }
+.privacy-toggle {
+  flex: none; display: inline-grid; place-items: center; width: 36px; height: 36px;
+  border: 0; border-radius: 999px; background: var(--hover); color: var(--muted); cursor: pointer;
+  transition: background 0.2s, color 0.2s;
+}
+.privacy-toggle:hover { color: var(--ink); }
+.privacy-toggle[aria-pressed='true'] { background: var(--card); color: var(--violet); box-shadow: 0 2px 8px -2px rgba(76, 38, 160, 0.25); }
 
 .dust-toggle { display: flex; justify-content: flex-end; align-items: center; gap: 10px; padding: 12px 4px 0; }

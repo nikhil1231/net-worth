@@ -1,4 +1,4 @@
-import { CurrencyProvider, CurrencyToggle } from './Currency'
+import { CurrencyProvider, CurrencyToggle, PrivacyToggle } from './Currency'
 import { BrowserRouter, NavLink, Route, Routes } from 'react-router'
 import { api } from './api'
 import { useAsync } from './hooks'
@@ -32,6 +32,7 @@ export function App() {
           ))}
           <NavLink to="/settings">⚙️ Settings</NavLink>
           <CurrencyToggle />
+          <PrivacyToggle />
         </nav>
       </header>
       <main>

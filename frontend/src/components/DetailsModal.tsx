@@ -47,9 +47,9 @@ type Getters = { str: (k: string) => string | undefined; num: (k: string) => num
 
 function DetailsContent({ data, str, num }: { data: Details } & Getters) {
   const isFund = str('quoteType') !== 'EQUITY'
-  const { nativeMoney, nativeCompact } = useMoney()
+  const { quoteNative, quoteCompact } = useMoney()
   const sourceCurrency = str('currency') ?? 'USD'
-  const quote = (value: number) => nativeMoney(value, sourceCurrency)
+  const quote = (value: number) => quoteNative(value, sourceCurrency)
   const price = num('regularMarketPrice') ?? num('currentPrice') ?? num('previousClose')
   const change = num('regularMarketChangePercent')
   const low = num('fiftyTwoWeekLow')
@@ -75,7 +75,7 @@ function DetailsContent({ data, str, num }: { data: Details } & Getters) {
         ['Sector', str('sectorDisp') ?? str('sector')],
         ['Industry', str('industryDisp') ?? str('industry')],
         ['Country', str('country') && `${flag(str('country')!)} ${str('country')}`],
-        ['Market cap', nativeCompact(num('marketCap'), ['GBp', 'GBX'].includes(sourceCurrency) ? 'GBP' : sourceCurrency)],
+        ['Market cap', quoteCompact(num('marketCap'), ['GBp', 'GBX'].includes(sourceCurrency) ? 'GBP' : sourceCurrency)],
         ['P/E', fixed(num('trailingPE'))],
         ['Forward P/E', fixed(num('forwardPE'))],
         ['EPS', fixed(num('trailingEps'))],

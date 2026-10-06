@@ -1,7 +1,12 @@
 import { type FormEvent, useState } from 'react'
 import YAML from 'yaml'
 import { type AccountConfig, type ConfigData, type FieldSpec, SECRET_MASK } from '../api'
+import { useMoney } from '../Currency'
+import { MASK } from '../money'
 import { CloseButton, Modal } from './Modal'
+
+/** Params holding the account's own value, locked while values are hidden. */
+const PRIVATE_FIELDS = new Set(['value', 'holdings'])
 
 type Props = {
   open: boolean
@@ -174,6 +179,7 @@ export function AccountForm({ open, original, initial, config, categories, onClo
 }
 
 function FieldInput({ field: f, value, onChange }: { field: FieldSpec; value: string | boolean; onChange: (v: string | boolean) => void }) {
+  const { hidden } = useMoney()
   if (f.kind === 'bool') {
     return (
       <label className="check">
@@ -185,10 +191,13 @@ function FieldInput({ field: f, value, onChange }: { field: FieldSpec; value: st
   const text = typeof value === 'string' ? value : ''
   const multiline = f.kind === 'list' || f.kind === 'yaml'
   const secret = f.kind === 'secret'
+  const locked = hidden && PRIVATE_FIELDS.has(f.key)
   return (
     <label className="field">
       <span>{f.label}{f.required && <b className="req"> *</b>}</span>
-      {multiline ? (
+      {locked ? (
+        <input value={MASK} disabled aria-label={`${f.label} (hidden)`} />
+      ) : multiline ? (
         <textarea rows={Math.min(10, Math.max(f.kind === 'yaml' ? 3 : 2, text.split('\n').length + 1))} value={text}
           onChange={e => onChange(e.target.value)} placeholder={f.placeholder ?? (f.kind === 'list' ? 'One per line' : '')}
           spellCheck={false} className="mono" />
@@ -204,7 +213,8 @@ function FieldInput({ field: f, value, onChange }: { field: FieldSpec; value: st
           spellCheck={false}
         />
       )}
-      {(f.help || secret) && (
+      {locked && <small>Unhide values to edit</small>}
+      {!locked && (f.help || secret) && (
         <small>
           {f.help}
           {secret && <>{f.help ? ' · ' : ''}{text === SECRET_MASK ? 'Saved - type to replace. ' : ''}<code>{'${VAR}'}</code> reads it from .env</>}

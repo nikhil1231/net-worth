@@ -36,3 +36,13 @@ test('signed changes and compact chart labels use the selected currency', () => 
 test('missing dollar rate fails rather than presenting pounds as dollars', () => {
   assert.throws(() => moneyFormatter('USD', { GBP: 1 }), /exchange rate/)
 })
+
+test('hidden mode masks personal amounts but keeps market prices', () => {
+  const money = moneyFormatter('USD', rates, true)
+  assert.equal(money.money(100), '$••••')
+  assert.equal(money.moneyCompact(100), '$••••')
+  assert.equal(money.signedMoney(-5), '−$••••')
+  assert.equal(money.nativeMoney(125, 'USD'), '$••••')
+  assert.equal(money.quote(100), '$125.00')
+  assert.equal(money.quoteNative(10000, 'GBp'), '$125.00')
+})
