@@ -82,7 +82,7 @@ class Monzo(Connector):
     categories = {'groceries': 'Groceries', 'eating_out': 'Eating out', 'shopping': 'Shopping',
                   'transport': 'Transport', 'bills': 'Bills', 'entertainment': 'Entertainment',
                   'holidays': 'Travel', 'personal_care': 'Health', 'education': 'Education',
-                  'gifts': 'Gifts', 'savings': 'Savings'}
+                  'gifts': 'Gifts', 'family': 'Family', 'savings': 'Savings'}
     for account in response['accounts']:
       if account.get('closed') or account.get('type') not in self.param('account_types', DEFAULT_ACCOUNT_TYPES):
         continue

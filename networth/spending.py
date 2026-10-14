@@ -15,7 +15,7 @@ from networth import categorise
 from networth.store import now
 
 CATEGORIES = ['Uncategorised', 'Groceries', 'Eating out', 'Shopping', 'Transport', 'Bills',
-              'Entertainment', 'Health', 'Travel', 'Housing', 'Education', 'Gifts', 'Savings']
+              'Entertainment', 'Health', 'Travel', 'Housing', 'Education', 'Gifts', 'Family', 'Other', 'Savings']
 KINDS = ['expense', 'income', 'refund', 'transfer']
 SCHEMA = '''
 CREATE TABLE IF NOT EXISTS transactions (
