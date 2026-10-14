@@ -54,8 +54,11 @@ def initialise(store):
   columns = {r['name'] for r in store.conn.execute('PRAGMA table_info(monthly_spending_rules)')}
   if 'description_contains' not in columns:
     store.conn.execute("ALTER TABLE monthly_spending_rules ADD COLUMN description_contains TEXT NOT NULL DEFAULT ''")
-  if 'time' not in {r['name'] for r in store.conn.execute('PRAGMA table_info(transactions)')}:
+  transaction_columns = {r['name'] for r in store.conn.execute('PRAGMA table_info(transactions)')}
+  if 'time' not in transaction_columns:
     store.conn.execute('ALTER TABLE transactions ADD COLUMN time TEXT')
+  if 'label' not in transaction_columns:
+    store.conn.execute('ALTER TABLE transactions ADD COLUMN label TEXT')
   if 'bank_account' not in {r['name'] for r in store.conn.execute('PRAGMA table_info(lunchflow_accounts)')}:
     store.conn.execute("ALTER TABLE lunchflow_accounts ADD COLUMN bank_account TEXT NOT NULL DEFAULT ''")
   store.conn.commit()
@@ -97,7 +100,7 @@ def transactions(store, account=None):
   return [r for r in rows if not account or r['account'] == account]
 
 
-def edit_transaction(store, transaction_id, category=None, kind=None, apply_rule=False, recurring_type=None):
+def edit_transaction(store, transaction_id, category=None, kind=None, apply_rule=False, recurring_type=None, label=None):
   row = store.conn.execute('SELECT * FROM transactions WHERE id=?', (transaction_id,)).fetchone()
   if row is None:
     raise LookupError('Transaction not found')
@@ -140,6 +143,9 @@ def edit_transaction(store, transaction_id, category=None, kind=None, apply_rule
             store.conn.execute('UPDATE transactions SET category_override=NULL WHERE id=?', (other['id'],))
     if kind is not None:
       store.conn.execute('UPDATE transactions SET kind_override=? WHERE id=?', (kind, transaction_id))
+    if label is not None:
+      # A blank label clears it, showing the bank's reference again.
+      store.conn.execute('UPDATE transactions SET label=? WHERE id=?', (label.strip() or None, transaction_id))
 
 
 def add_months(day, months):

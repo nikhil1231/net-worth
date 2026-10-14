@@ -9,7 +9,11 @@ export function Modal({ open, onClose, children, className = '', ariaLabel }: Pr
   useEffect(() => {
     const dialog = ref.current
     if (!dialog) return
-    if (open && !dialog.open) dialog.showModal()
+    if (open && !dialog.open) {
+      dialog.showModal()
+      // showModal focuses the first focusable element (the close button); prefer the marked field.
+      dialog.querySelector<HTMLElement>('[data-autofocus]')?.focus()
+    }
     if (!open && dialog.open) dialog.close()
   }, [open])
 
@@ -27,5 +31,5 @@ export function Modal({ open, onClose, children, className = '', ariaLabel }: Pr
 }
 
 export function CloseButton({ onClose }: { onClose: () => void }) {
-  return <button className="icon-btn plain" onClick={onClose} aria-label="Close" title="Close">✕</button>
+  return <button type="button" className="icon-btn plain" onClick={onClose} aria-label="Close" title="Close">✕</button>
 }

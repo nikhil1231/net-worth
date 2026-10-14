@@ -431,3 +431,17 @@ def test_report_is_json_serialisable_with_matched_transfers(setup):
   spending.save_transactions(store,[bank('dd','AMERICAN EXPRESS',-3989),bank('card','x',3989,account='Amex',description='PAYMENT RECEIVED')])
   client=TestClient(create_app(config,run_scheduler=False))
   assert client.get('/api/spending?month=2026-10').status_code==200
+
+
+def test_label_survives_sync_and_clears_back_to_the_reference(setup):
+  store,config=setup
+  row=bank('a','PAYPAL PAYMENT',-10863)
+  spending.save_transactions(store,[row])
+  client=TestClient(create_app(config,run_scheduler=False))
+  assert client.patch('/api/spending/transactions/a',json=dict(label='  TV for Mum ')).status_code==200
+  spending.save_transactions(store,[row])
+  [actual]=spending.transactions(store)
+  assert (actual['label'],actual['merchant'])==('TV for Mum','PAYPAL PAYMENT')
+  assert client.patch('/api/spending/transactions/a',json=dict(label='x'*101)).status_code==422
+  client.patch('/api/spending/transactions/a',json=dict(label=''))
+  assert spending.transactions(store)[0]['label'] is None

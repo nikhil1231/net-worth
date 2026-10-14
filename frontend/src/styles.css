@@ -861,6 +861,14 @@ details.field[open] > summary { margin-bottom: 6px; }
 .spending-table td { border-top: 1px solid var(--line); padding: 13px 10px; vertical-align: middle; }
 .spending-table td:first-child, .spending-table td:last-child { white-space: nowrap; }
 .spending-table th:last-child, .spending-table td:last-child { text-align: right; font-variant-numeric: tabular-nums; }
+.transaction-name { display: inline-flex; align-items: center; gap: 4px; }
+.transaction-label-trigger { display: inline-grid; place-items: center; width: 22px; height: 22px; border: 0; border-radius: 6px; background: none; color: var(--muted); cursor: pointer; opacity: .55; }
+tr:hover .transaction-label-trigger, .transaction-label-trigger:focus-visible { opacity: 1; }
+.transaction-label-trigger:hover { background: var(--hover); color: var(--violet); }
+.transaction-label-modal { width: min(460px, calc(100vw - 32px)); }
+.transaction-label-modal .form-actions .btn { border-radius: 999px; }
+.transaction-label { display: flex; align-items: center; gap: 5px; color: var(--violet); }
+.transaction-label svg { flex: none; opacity: .75; }
 .transaction-description { display: block; max-width: 330px; overflow-wrap: anywhere; }
 .spending-badge { display: inline-block; font-size: 10px; background: var(--hover); border-radius: 6px; padding: 3px 6px; color: var(--muted); margin: 3px 0; }
 .spending-table td .spending-badge { display: block; width: fit-content; }

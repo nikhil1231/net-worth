@@ -13,6 +13,7 @@ class TransactionEdit(BaseModel):
   kind: str | None = None
   apply_rule: bool = False
   recurring_type: Literal['auto', 'monthly', 'subscription', 'none'] | None = None
+  label: str | None = Field(None, max_length=100)
 
 
 class StatementImport(BaseModel):

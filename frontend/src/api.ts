@@ -165,7 +165,7 @@ export type SpendingTransaction = {
   id: string; account: string; bank_account: string; date: string; merchant: string; description: string
   amount: number; category: string; kind: 'expense' | 'income' | 'refund' | 'transfer'
   pending: boolean; possible_transfer: boolean; recurring_type: RecurringType
-  time: string | null; inferred: ('category' | 'kind')[]
+  time: string | null; label: string | null; inferred: ('category' | 'kind')[]
 }
 export type RecurringPayment = {
   id: string; account: string; merchant: string; status: 'detected' | 'confirmed' | 'dismissed' | 'cancelled'
@@ -201,7 +201,7 @@ export const spendingApi = {
   saveLunchflow: (mappings: LunchFlowMapping[]) => request<LunchFlowState>('/api/spending/lunchflow', jsonBody('PUT', { mappings })),
   report: (month: string, account: string) => request<SpendingReport>(`/api/spending?month=${month}${account ? `&account=${encodeURIComponent(account)}` : ''}`),
   sync: () => request<{ account: string; count: number; error: string | null }[]>('/api/spending/sync', { method: 'POST' }),
-  edit: (id: string, values: { category?: string; kind?: string; apply_rule?: boolean; recurring_type?: RecurringType }) => request(`/api/spending/transactions/${encodeURIComponent(id)}`, jsonBody('PATCH', values)),
+  edit: (id: string, values: { category?: string; kind?: string; apply_rule?: boolean; recurring_type?: RecurringType; label?: string }) => request(`/api/spending/transactions/${encodeURIComponent(id)}`, jsonBody('PATCH', values)),
   recurring: (r: RecurringPayment, status: RecurringPayment['status']) => request(`/api/spending/recurring/${r.id}`, jsonBody('PATCH', { account: r.account, merchant: r.merchant, status })),
   import: (account: string, text: string, mapping: Record<string, string | boolean>, commit = false) => request<StatementPreview>('/api/spending/import', jsonBody('POST', { account, text, mapping, commit })),
 }
