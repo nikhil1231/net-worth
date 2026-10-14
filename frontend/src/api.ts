@@ -159,3 +159,48 @@ export const api = {
   refresh: (account?: string) =>
     request<Summary>(`/api/refresh${account ? `?account=${encodeURIComponent(account)}` : ''}`, { method: 'POST' }),
 }
+
+export type RecurringType = 'auto' | 'monthly' | 'subscription' | 'none'
+export type SpendingTransaction = {
+  id: string; account: string; bank_account: string; date: string; merchant: string; description: string
+  amount: number; category: string; kind: 'expense' | 'income' | 'refund' | 'transfer'
+  pending: boolean; possible_transfer: boolean; recurring_type: RecurringType
+}
+export type RecurringPayment = {
+  id: string; account: string; merchant: string; status: 'detected' | 'confirmed' | 'dismissed' | 'cancelled'
+  frequency: string; recurring_type: RecurringType; manual: boolean; amount: number; monthly: number; last_date: string; next_date: string
+  overdue: boolean; variable: boolean; price_change: number
+  active: boolean; inactive: boolean; coverage_stale: boolean; description_contains: string
+}
+export type SpendingReport = {
+  month: string
+  summary: { spent: number; refunds: number; net_spent: number; income: number; pending: number; committed: number }
+  categories: { category: string; amount: number }[]
+  history: { month: string; spent: number; refunds: number; income: number }[]
+  pace: { day: number; current: number | null; previous: number }[]
+  transactions: SpendingTransaction[]; recurring: RecurringPayment[]
+  accounts: { name: string; type: string; sync_enabled: boolean; first_date: string | null; last_date: string | null; count: number; last_success?: string; last_error?: string; history_from?: string }[]
+  category_options: string[]; review_count: number
+}
+export type StatementPreview = {
+  count: number; new_count: number; duplicates: number; first_date: string; last_date: string
+  preview: SpendingTransaction[]; committed: boolean
+}
+const jsonBody = (method: string, value: unknown) => ({ method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(value) })
+export type LunchFlowAccount = { id: string; name: string; institution: string; currency: string; status: string }
+export type LunchFlowMapping = { id: string; account: string; start_date: string | null }
+export type LunchFlowState = {
+  configured: boolean
+  bindings: (LunchFlowMapping & { institution: string; enabled: number })[]
+  choices: { name: string; start_date: string }[]
+}
+export const spendingApi = {
+  lunchflow: () => request<LunchFlowState>('/api/spending/lunchflow'),
+  lunchflowAccounts: () => request<LunchFlowAccount[]>('/api/spending/lunchflow/accounts', { method: 'POST' }),
+  saveLunchflow: (mappings: LunchFlowMapping[]) => request<LunchFlowState>('/api/spending/lunchflow', jsonBody('PUT', { mappings })),
+  report: (month: string, account: string) => request<SpendingReport>(`/api/spending?month=${month}${account ? `&account=${encodeURIComponent(account)}` : ''}`),
+  sync: () => request<{ account: string; count: number; error: string | null }[]>('/api/spending/sync', { method: 'POST' }),
+  edit: (id: string, values: { category?: string; kind?: string; apply_rule?: boolean; recurring_type?: RecurringType }) => request(`/api/spending/transactions/${encodeURIComponent(id)}`, jsonBody('PATCH', values)),
+  recurring: (r: RecurringPayment, status: RecurringPayment['status']) => request(`/api/spending/recurring/${r.id}`, jsonBody('PATCH', { account: r.account, merchant: r.merchant, status })),
+  import: (account: string, text: string, mapping: Record<string, string | boolean>, commit = false) => request<StatementPreview>('/api/spending/import', jsonBody('POST', { account, text, mapping, commit })),
+}

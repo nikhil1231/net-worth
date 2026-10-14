@@ -5,6 +5,7 @@ import { useAsync } from './hooks'
 import { AccountPage } from './pages/AccountPage'
 import { Overview } from './pages/Overview'
 import { Settings } from './pages/Settings'
+import { Spending } from './pages/Spending'
 
 /** Nav label for an account: "HL Stocks & Shares ISA" -> "ISA". */
 function shortName(name: string) {
@@ -30,6 +31,7 @@ export function App() {
           {investments.map(a => (
             <NavLink key={a.name} to={`/accounts/${encodeURIComponent(a.name)}`}>📈 {shortName(a.name)}</NavLink>
           ))}
+          <NavLink to="/spending">🧾 Spending</NavLink>
           <NavLink to="/settings">⚙️ Settings</NavLink>
           <CurrencyToggle />
           <PrivacyToggle />
@@ -44,6 +46,7 @@ export function App() {
             <Route path="/accounts/:name" element={<AccountPage onRefreshed={setData} />} />
             <Route path="/accounts/:name/chains/:chain" element={<AccountPage onRefreshed={setData} />} />
             <Route path="/accounts/:name/wallets/:wallet" element={<AccountPage onRefreshed={setData} />} />
+            <Route path="/spending" element={<Spending />} />
             <Route path="/settings" element={<Settings summary={summary} onSummary={setData} />} />
             <Route path="*" element={<div className="page"><div className="banner bad">🤷 Nothing here. <NavLink to="/">Back to overview</NavLink></div></div>} />
           </Routes>

@@ -1,6 +1,9 @@
+import asyncio
 import json
 import secrets
 import time
+from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 from urllib.parse import parse_qs, urlencode, urlparse
 
 from networth import http
@@ -15,6 +18,11 @@ DEFAULT_ACCOUNT_TYPES = ['uk_retail', 'uk_retail_joint']
 
 class MonzoAuthError(Exception):
   pass
+
+
+# Refresh tokens are single-use: two refreshes at once (a scheduled run and an API call) would
+# spend the same one, and the loser is logged out.
+_token_lock = asyncio.Lock()
 
 
 @connector('monzo')
@@ -63,9 +71,74 @@ class Monzo(Connector):
 
     return holdings
 
+  async def fetch_transactions(self, full_history=False, on_batch=None):
+    from networth.spending import CATEGORIES
+    headers = {'Authorization': f'Bearer {await self._access_token()}'}
+    response = await http.get_json(f'{API_URL}/accounts', headers=headers)
+    sync_end = datetime.now(timezone.utc)
+    since = (sync_end - timedelta(days=89)).isoformat()
+    history_from = since[:10]
+    rows = []
+    categories = {'groceries': 'Groceries', 'eating_out': 'Eating out', 'shopping': 'Shopping',
+                  'transport': 'Transport', 'bills': 'Bills', 'entertainment': 'Entertainment',
+                  'holidays': 'Travel', 'personal_care': 'Health', 'education': 'Education',
+                  'gifts': 'Gifts', 'savings': 'Savings'}
+    for account in response['accounts']:
+      if account.get('closed') or account.get('type') not in self.param('account_types', DEFAULT_ACCOUNT_TYPES):
+        continue
+      start = datetime.fromisoformat(account.get('created', '2000-01-01T00:00:00Z').replace('Z', '+00:00')) if full_history else datetime.fromisoformat(since)
+      history_from = min(history_from, start.date().isoformat())
+      window_end = sync_end
+      # Monzo also limits individual requests to a range of under 90 days.
+      while window_end > start:
+        window_start = max(start, window_end - timedelta(days=89))
+        cursor = window_start.isoformat()
+        seen = set()
+        for _ in range(1000):
+          batch = (await http.get_json(f'{API_URL}/transactions', headers=headers,
+                   params={'account_id': account['id'], 'since': cursor, 'before': window_end.isoformat(), 'limit': 100, 'expand[]': 'merchant'}))['transactions']
+          if not batch:
+            break
+          batch_start = len(rows)
+          for tx in batch:
+            if tx['id'] in seen:
+              continue
+            seen.add(tx['id'])
+            if tx.get('currency') != 'GBP':
+              raise ValueError('Spending currently supports GBP accounts only')
+            merchant = tx.get('merchant') if isinstance(tx.get('merchant'), dict) else {}
+            meta = tx.get('metadata') or {}
+            transfer = bool(meta.get('pot_id') or meta.get('pot_account_id')) or tx.get('category') == 'savings'
+            amount = int(tx['amount'])
+            kind = 'transfer' if transfer else 'expense' if amount < 0 else 'refund' if merchant and not tx.get('is_load') else 'income'
+            if tx.get('decline_reason'):
+              amount = 0
+            rows.append(dict(id='monzo:'+tx['id'], account=self.account.name, bank_account=account['id'],
+                        date=datetime.fromisoformat(tx['created'].replace('Z','+00:00')).astimezone(ZoneInfo('Europe/London')).date().isoformat(),
+                        merchant=merchant.get('name') or tx.get('description') or 'Unknown merchant',
+                        description=tx.get('description') or '', amount=amount,
+                        category=categories.get(tx.get('category'), CATEGORIES[0]), kind=kind,
+                        pending=int(not bool(tx.get('settled')) and amount != 0), source='monzo'))
+          if on_batch is not None:
+            on_batch(rows[batch_start:])
+          if len(batch) < 100:
+            break
+          next_cursor = batch[-1]['id']
+          if next_cursor == cursor:
+            raise ValueError('Monzo pagination did not advance')
+          cursor = next_cursor
+        else:
+          raise ValueError('Monzo history exceeded page limit')
+        window_end = window_start
+    return rows, history_from
+
   # --- OAuth ---
 
   async def _access_token(self):
+    async with _token_lock:
+      return await self._refresh_if_needed()
+
+  async def _refresh_if_needed(self):
     tokens = self._load_tokens()
     if tokens['expires_at'] - 60 > time.time():
       return tokens['access_token']
@@ -129,5 +202,16 @@ class Monzo(Connector):
     self._save_tokens(res)
 
     input('\n3. Approve the access request in the Monzo app, then press Enter...')
+    # Capture history immediately after approval while Monzo permits a full backfill.
+    from networth.config import Config
+    from networth.store import Store
+    from networth.spending import sync_monzo
+    config = Config([self.account], data_dir=self.data_dir)
+    store = Store(config.db_path)
+    try:
+      result = await sync_monzo(store, config, full_history=True)
+      print('Transaction history:', result[0]['error'] or f"{result[0]['count']} transactions saved")
+    finally:
+      store.conn.close()
     holdings = await self.fetch()
     print(f'\nAuthorised. Found {len(holdings)} balances.')

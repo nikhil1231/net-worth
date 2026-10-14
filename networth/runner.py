@@ -78,5 +78,11 @@ class Runner:
           rows.append(SnapshotRow(account.name, account.category, holding, price, value, fetched_at))
 
       run_id = self.store.write_run(ts, rows)
+      from networth.spending import sync_monzo
+      for account in due:
+        if account.type == 'monzo':
+          await sync_monzo(self.store, self.config, account.name)
+      from networth.lunchflow import sync as sync_lunchflow
+      await sync_lunchflow(self.store, self.config, due_only=True)
       log.info('run %d: total £%.2f', run_id, sum(r.value_gbp or 0 for r in rows))
       return run_id

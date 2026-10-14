@@ -71,6 +71,20 @@ accounts:
       client_secret: ${MONZO_CLIENT_SECRET}
 
   - name: Santander
+    type: lunchflow       # balance from Lunch Flow; LUNCHFLOW_API_KEY in .env
+    category: cash
+    interval: 60
+    params:
+      account_id: '12345'
+
+  - name: Amex
+    type: lunchflow       # credit cards come back negative when money is owed
+    category: liabilities
+    interval: 60
+    params:
+      account_id: '12346'
+
+  - name: Savings
     type: manual
     category: cash
     params:

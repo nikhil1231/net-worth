@@ -24,7 +24,7 @@ and applies changes without a restart. Secrets typed in literally are never sent
 ```bash
 .venv/bin/python -m networth check [ACCOUNT...]   # fetch and print holdings, saves nothing
 .venv/bin/python -m networth run [--force]        # one run, saves a snapshot
-.venv/bin/python -m networth serve                # dashboard + scheduler on http://127.0.0.1:8000
+.venv/bin/python -m networth serve --host 0.0.0.0  # dashboard + scheduler on LAN port 8000
 .venv/bin/python -m networth monzo-auth "Monzo"   # one-off Monzo login
 ```
 
@@ -94,3 +94,105 @@ The header GBP/USD toggle remembers the display currency in the browser. Values,
 prices, chart labels and tooltips convert immediately using public Coinbase FX rates,
 refreshed every 15 minutes. Stored snapshots and sandbox quantities stay in their
 original units; dollar sandbox inputs convert back to GBP internally.
+
+## Spending
+
+The **Spending** page combines GBP bank transactions into monthly spending, category,
+pace and income charts. Transactions are stored separately from net-worth snapshots;
+spending sync failures retain history and do not change balance snapshots.
+
+- **Monzo:** the scheduler collects recent transactions whenever Monzo is due, and
+  **sync** refreshes them on demand. Existing authorisation is reused. Regular
+  syncs reread 89 days to update pending/settled payments. Monzo permits full history
+  only immediately after authentication: `python -m networth monzo-auth "Monzo"`
+  now attempts a full transaction import immediately after app approval.
+- **Santander / manual cash accounts:** open the gear icon → **Statements**, select the account, map
+  columns and preview before committing. Use a GBP CSV with a header row, date,
+  description and either a signed amount (negative for outgoings), or separate money
+  out and money in columns. Optional unique transaction IDs improve deduplication.
+  DD/MM/YYYY and YYYY-MM-DD dates are supported, as are comma, semicolon and tab
+  delimiters. Imports are limited to 5 MB / 10,000 rows. PDF and Santander text
+  statements are not parsed; convert them to this CSV format first.
+- **Corrections:** categories and expense/income/refund/transfer classifications
+  persist across syncs. Optionally apply a category rule to all past and future
+  transactions with the same merchant in that account. CSV credits start as income;
+  classify refunds and transfers yourself. Known Monzo pot/savings movements are
+  excluded; cross-account amount/date matches are suggestions requiring review.
+- **Mark monthly spending:** use the transaction's **recurring icon** at the end of the row to choose
+  **Monthly spend** or **Monthly subscription**. The rule marks all past and future
+  expenses with the same merchant (ignoring case and extra spaces) in that bank
+  account, and creates a confirmed commitment immediately after the first settled
+  charge. Variable amounts and irregular dates do not undo an explicit rule. Its
+  estimate uses the last settled charge. Choose **Not recurring** to suppress both
+  manual tracking and suggestions, or **Automatic detection** to remove the rule.
+- **Recurring payments:** consistent weekly/monthly patterns need three settled
+  payments, quarterly/annual patterns need two. Confirm suggestions to include their
+  monthly equivalents in commitments, dismiss shopping patterns, or mark cancelled.
+  These are inferred payments, not a bank mandate feed; changing status never cancels
+  a service. Expected dates and price changes are estimates from recorded payments.
+
+Coverage shows first/last transaction dates and sync status, not a guarantee of
+complete history. Charts exclude pending payments and confirmed transfers, and
+show refunds in the month received. Importing identical files is safe; without bank
+IDs, overlapping partial files containing identical same-day payments can be
+ambiguous. Transaction amounts are stored as integer pence. The privacy toggle
+hides spending amounts, merchant descriptions and charts.
+
+Transaction history is retained indefinitely: the 89-day sync window limits what
+Monzo can return on each routine fetch, not what this app keeps. Back up the SQLite
+database in `data/` (or the deployed data directory) to preserve history and rules.
+Older Monzo history can be backfilled by reauthorising and capturing it in the API's
+five-minute full-history window. Monzo's own app can also export older statements,
+but this app's CSV importer currently targets manual cash accounts, not Monzo.
+
+The recurring list defaults to active commitments. Missing payments become inactive
+once subsequent activity in the same bank account passes the expected date plus a
+grace period (weekly: 14 days, monthly: 35 days, quarterly: 45 days, annual: 60 days).
+Inactive, cancelled and dismissed entries are available through **Show inactive &
+dismissed** and are excluded from recurring commitments. A new payment can revive
+an inactive service; an explicit cancelled/dismissed status is preserved. Missing
+payments are judged against recorded account activity, so simply leaving an account
+unsynced does not invent a cancellation. Stale coverage is flagged.
+Multiple monthly charges to one merchant on the same day are summed for its latest
+commitment estimate. Description-specific rules can distinguish a subscription from
+other purchases or API credits billed by the same merchant.
+
+### Lunch Flow transactions
+
+Set `LUNCHFLOW_API_KEY` in the `.env` file beside `accounts.yaml`, using the key
+from a Lunch Flow **REST API destination**. Then open **Spending → gear icon → Bank connections**.
+Connected accounts load automatically; use **Refresh** to reload them or **Retry
+connection** after adding or fixing the key. Enable Santander and
+American Express in the destination's Account Access settings if they do not
+appear. Select each active GBP account/card and choose its app account name.
+Use the exact existing app account name to link it; a new name creates an account
+for spending only, without changing net-worth balances.
+
+Balances come from the same feed: give an account `type: lunchflow` and the Lunch
+Flow `account_id` (shown under Bank connections), and it reads
+`/accounts/{id}/balance`. Lunch Flow signs balances from your side, so money owed on
+a credit card is negative and a card in credit is positive. Name the account the
+same as its spending link so transactions and balance share one account.
+
+Save the selections and press **sync** to import immediately. The normal
+scheduler also checks Lunch Flow hourly while the app runs. Sync reads the
+transactions already available in Lunch Flow; it does not force the bank to refresh.
+Blank import dates fetch all available history. If the app account already contains
+CSV transactions, choose a start date after the final CSV date to avoid overlap;
+further CSV imports into linked accounts are blocked. Unchecking an account and
+saving pauses its sync while retaining imported transactions and rules.
+
+The API key is read server-side from `LUNCHFLOW_API_KEY` in `.env` (or the process
+environment). It is never entered in or returned to the browser. Changes to `.env`
+are picked up on the next API request. Keep `.env` private and back up `networth.db`
+to preserve transaction history and account mappings. The integration uses the
+[Lunch Flow Personal API](https://www.lunchflow.app/docs/api/personal-api-overview).
+
+Transactions use GBP pence, stable bank IDs and per-account namespaces for repeat
+syncs. Providers without transaction IDs use date/amount/description plus an
+occurrence index; changed descriptions or dates can make those records ambiguous.
+Pending entries are excluded from settled totals and removed when they disappear
+from a successful full response. Settled history and manual category/type overrides
+are retained. Positive transactions start as income: review refunds and mark
+credit-card repayments or movements between your accounts as transfers to prevent
+double counting.

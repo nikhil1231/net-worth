@@ -44,6 +44,12 @@ def create_app(config: Config, run_scheduler: bool = True) -> FastAPI:
   # Handlers are async so all SQLite access happens on the event loop thread.
   app = FastAPI(title='Net worth', lifespan=lifespan)
 
+  from networth.web.spending import router as spending_router
+  app.include_router(spending_router(store, config, runner))
+
+  from networth.web.transactions import router as transactions_router
+  app.include_router(transactions_router(config))
+
   fx_cache = {}
   fx_lock = asyncio.Lock()
 

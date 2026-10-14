@@ -24,6 +24,7 @@ const CATEGORY: Record<string, { color: string; emoji: string }> = {
   cash: { color: '#18c29c', emoji: '💷' },
   property: { color: '#ff4fa3', emoji: '🏡' },
   pension: { color: '#2f9bff', emoji: '🌴' },
+  liabilities: { color: '#ff5d5d', emoji: '💳' },
 }
 
 export function categoryStyle(category: string, index = 0) {

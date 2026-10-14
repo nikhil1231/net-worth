@@ -71,6 +71,8 @@ class Store:
       if column not in columns:
         self.conn.execute(f'ALTER TABLE snapshots ADD COLUMN {column} TEXT')
     self.conn.commit()
+    from networth.spending import initialise
+    initialise(self)
 
   def write_run(self, ts: str, rows: list[SnapshotRow]) -> int:
     with self.conn:
@@ -86,6 +88,8 @@ class Store:
     """Move an account's history and status to its new name, so renaming doesn't start it afresh."""
     with self.conn:
       self.conn.execute('UPDATE snapshots SET account = ? WHERE account = ?', (new, old))
+      for table in ('transactions', 'spending_rules', 'monthly_spending_rules', 'recurring_payments', 'spending_status', 'lunchflow_accounts'):
+        self.conn.execute(f'UPDATE {table} SET account=? WHERE account=?', (new, old))
       self.conn.execute('DELETE FROM account_status WHERE account = ?', (new,))
       self.conn.execute('UPDATE account_status SET account = ? WHERE account = ?', (new, old))
 
