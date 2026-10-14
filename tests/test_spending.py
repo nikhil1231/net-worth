@@ -371,3 +371,63 @@ def test_annual_payment_stays_active_until_annual_renewal_is_missed(setup):
   spending.save_transactions(store,[tx('a','2024-12-01',merchant='Annual'),tx('b','2025-12-01',merchant='Annual'),tx('recent','2026-10-13',amount=100000,merchant='Salary')])
   payment=spending.report(store,config,'2026-10')['recurring'][0]
   assert payment['frequency']=='Annual' and payment['active'] and not payment['inactive']
+
+
+def bank(id, merchant, amount, account='Santander', day='2026-10-01', description=None):
+  return dict(tx(id, day, amount, account, merchant), description=description or merchant, category='Uncategorised', source='lunchflow')
+
+
+def test_own_account_transfers_are_detected_from_shared_references_and_card_repayments(setup):
+  store,config=setup
+  spending.save_transactions(store,[
+    bank('out','JOHN SMITH REFERENCE MONZO-ABCDE SANTANDER',-50000,description='FASTER PAYMENT TO JOHN SMITH REFERENCE MONZO-ABCDE SANTANDER'),
+    dict(tx('in','2026-10-02',50000,merchant='Monzo-ABCDE'),category='Uncategorised'),
+    bank('dd','AMERICAN EXPRESS',-3989,description='DIRECT DEBIT PAYMENT TO AMERICAN EXPRESS REF 3412'),
+    bank('card','100000000109',3989,account='Amex',day='2026-09-29',description='PAYMENT RECEIVED - THANK YOU'),
+    bank('lone','100000000110',1200,account='Amex',description='PAYMENT RECEIVED - THANK YOU'),
+    bank('hl','HLAM LTD S AND S ISA CLIENT ACC',-1000000)])
+  rows={r['id']:r for r in spending.transactions(store)}
+  assert {k:rows[k]['kind'] for k in rows}==dict.fromkeys(rows,'transfer')
+  assert rows['hl']['category']=='Savings' and not any(r['possible_transfer'] for r in rows.values())
+  assert spending.report(store,config,'2026-10')['summary']['spent']==0
+  # An explicit choice beats the inference.
+  spending.edit_transaction(store,'out',kind='expense')
+  rows={r['id']:r for r in spending.transactions(store)}
+  assert rows['out']['kind']=='expense' and rows['in']['kind']=='income' and rows['in']['possible_transfer']
+
+
+def test_uncategorised_bank_transactions_learn_from_categorised_merchants(setup):
+  store,_=setup
+  spending.save_transactions(store,[tx('m1',merchant='Tesco'),tx('m2',merchant='Tesco',day='2026-09-01'),
+    bank('amex','TESCO STORES',-911,account='Amex',description='TESCO STORE 5711 LONDON'),
+    bank('tfl','TFL TRAVEL CHARGE',-175,account='Amex'),
+    bank('shop','GOOGLE SERVICES',-1899,account='Amex'),bank('back','GOOGLE SERVICES',122,account='Amex'),
+    bank('salary','DR SMITH LIMITED',83300),bank('mystery','PAYPAL PAYMENT',-1200)])
+  rows={r['id']:r for r in spending.transactions(store)}
+  assert (rows['amex']['category'],rows['tfl']['category'])==('Shopping','Transport')  # learned from Monzo's 'Tesco'
+  assert (rows['back']['kind'],rows['salary']['kind'],rows['mystery']['category'])==('refund','income','Uncategorised')
+  assert 'category' in rows['amex']['inferred']
+  spending.edit_transaction(store,'tfl',category='Travel')
+  assert next(r for r in spending.transactions(store) if r['id']=='tfl')['category']=='Travel'
+
+
+def test_choosing_savings_makes_it_a_transfer(setup):
+  store,config=setup
+  spending.save_transactions(store,[bank('a','Pot top up',-5000),bank('b','Vault',-2000,day='2026-10-03')])
+  spending.edit_transaction(store,'a',category='Savings')
+  spending.edit_transaction(store,'b',category='Savings',apply_rule=True)
+  assert {r['kind'] for r in spending.transactions(store)}=={'transfer'}
+  assert spending.report(store,config,'2026-10')['summary']['spent']==0
+
+
+def test_monzo_rows_keep_their_local_time(setup):
+  store,_=setup
+  spending.save_transactions(store,[tx('a',time='08:05'),tx('b',time='21:40'),tx('c')])
+  assert [r['time'] for r in spending.transactions(store)]==['21:40','08:05',None]
+
+
+def test_report_is_json_serialisable_with_matched_transfers(setup):
+  store,config=setup
+  spending.save_transactions(store,[bank('dd','AMERICAN EXPRESS',-3989),bank('card','x',3989,account='Amex',description='PAYMENT RECEIVED')])
+  client=TestClient(create_app(config,run_scheduler=False))
+  assert client.get('/api/spending?month=2026-10').status_code==200

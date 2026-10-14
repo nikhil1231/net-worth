@@ -113,8 +113,9 @@ class Monzo(Connector):
             kind = 'transfer' if transfer else 'expense' if amount < 0 else 'refund' if merchant and not tx.get('is_load') else 'income'
             if tx.get('decline_reason'):
               amount = 0
+            created = datetime.fromisoformat(tx['created'].replace('Z','+00:00')).astimezone(ZoneInfo('Europe/London'))
             rows.append(dict(id='monzo:'+tx['id'], account=self.account.name, bank_account=account['id'],
-                        date=datetime.fromisoformat(tx['created'].replace('Z','+00:00')).astimezone(ZoneInfo('Europe/London')).date().isoformat(),
+                        date=created.date().isoformat(), time=created.strftime('%H:%M'),
                         merchant=merchant.get('name') or tx.get('description') or 'Unknown merchant',
                         description=tx.get('description') or '', amount=amount,
                         category=categories.get(tx.get('category'), CATEGORIES[0]), kind=kind,

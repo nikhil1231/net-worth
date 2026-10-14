@@ -165,6 +165,7 @@ export type SpendingTransaction = {
   id: string; account: string; bank_account: string; date: string; merchant: string; description: string
   amount: number; category: string; kind: 'expense' | 'income' | 'refund' | 'transfer'
   pending: boolean; possible_transfer: boolean; recurring_type: RecurringType
+  time: string | null; inferred: ('category' | 'kind')[]
 }
 export type RecurringPayment = {
   id: string; account: string; merchant: string; status: 'detected' | 'confirmed' | 'dismissed' | 'cancelled'

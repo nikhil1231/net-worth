@@ -875,6 +875,10 @@ details.field[open] > summary { margin-bottom: 6px; }
 .recurring-amount { font-family: var(--display); font-size: 26px; margin: 6px 0; }
 @media (max-width: 1000px) { .spending-stats, .recurring-grid { grid-template-columns: repeat(2,minmax(0,1fr)); } }
 @media (max-width: 600px) { .spending-stats, .recurring-grid, .import-columns { grid-template-columns: minmax(0,1fr); } .spending-stat strong { font-size: 30px; } .spending-heading h1 { font-size: 32px; } }
+.spending-table .transaction-date span { display: block; margin-top: 2px; font-variant-numeric: tabular-nums; }
+.spending-table td:has(.account-dot) { white-space: nowrap; }
+.account-dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 7px; vertical-align: 1px; }
+.spending-table select.inferred { font-style: italic; }
 .spending-table .transaction-amount { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .spending-table .transaction-actions { width: 66px; padding-left: 26px; padding-right: 10px; }
 .transaction-menu-trigger.active { color: var(--violet); background: var(--hover); }

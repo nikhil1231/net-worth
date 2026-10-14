@@ -11,6 +11,7 @@ from datetime import date, datetime, timedelta
 from decimal import Decimal, InvalidOperation
 from zoneinfo import ZoneInfo
 
+from networth import categorise
 from networth.store import now
 
 CATEGORIES = ['Uncategorised', 'Groceries', 'Eating out', 'Shopping', 'Transport', 'Bills',
@@ -53,6 +54,8 @@ def initialise(store):
   columns = {r['name'] for r in store.conn.execute('PRAGMA table_info(monthly_spending_rules)')}
   if 'description_contains' not in columns:
     store.conn.execute("ALTER TABLE monthly_spending_rules ADD COLUMN description_contains TEXT NOT NULL DEFAULT ''")
+  if 'time' not in {r['name'] for r in store.conn.execute('PRAGMA table_info(transactions)')}:
+    store.conn.execute('ALTER TABLE transactions ADD COLUMN time TEXT')
   if 'bank_account' not in {r['name'] for r in store.conn.execute('PRAGMA table_info(lunchflow_accounts)')}:
     store.conn.execute("ALTER TABLE lunchflow_accounts ADD COLUMN bank_account TEXT NOT NULL DEFAULT ''")
   store.conn.commit()
@@ -66,11 +69,11 @@ def save_transactions(store, rows):
   with store.conn:
     for row in rows:
       store.conn.execute('''INSERT INTO transactions
-        (id,account,bank_account,date,merchant,description,amount,category,kind,pending,source)
-        VALUES (:id,:account,:bank_account,:date,:merchant,:description,:amount,:category,:kind,:pending,:source)
-        ON CONFLICT(id) DO UPDATE SET date=excluded.date, merchant=excluded.merchant,
+        (id,account,bank_account,date,time,merchant,description,amount,category,kind,pending,source)
+        VALUES (:id,:account,:bank_account,:date,:time,:merchant,:description,:amount,:category,:kind,:pending,:source)
+        ON CONFLICT(id) DO UPDATE SET date=excluded.date, time=excluded.time, merchant=excluded.merchant,
         description=excluded.description, amount=excluded.amount, category=excluded.category,
-        kind=excluded.kind, pending=excluded.pending''', row)
+        kind=excluded.kind, pending=excluded.pending''', {'time': None, **row})
 
 
 def transactions(store, account=None):
@@ -78,27 +81,20 @@ def transactions(store, account=None):
   monthly_rules = {(r['account'], r['bank_account'], r['merchant']): (r['recurring_type'], r['description_contains'])
                    for r in store.conn.execute('SELECT * FROM monthly_spending_rules')}
   rows = []
-  for raw in store.conn.execute('SELECT * FROM transactions ORDER BY date DESC, id'):
+  for raw in store.conn.execute("SELECT * FROM transactions ORDER BY date DESC, COALESCE(time, '') DESC, id"):
     row = dict(raw)
-    if account and row['account'] != account:
-      continue
-    row['category'] = row['category_override'] or rules.get((row['account'], merchant_key(row['merchant'])), row['category'])
+    rule = rules.get((row['account'], merchant_key(row['merchant'])))
+    row['category'] = row['category_override'] or rule or row['category']
+    row['category_locked'] = bool(row['category_override'] or rule)
     row['kind'] = row['kind_override'] or row['kind']
+    row['kind_locked'] = bool(row['kind_override'])
     rule_type, description_match = monthly_rules.get((row['account'], row['bank_account'], merchant_key(row['merchant'])), ('auto', ''))
     row['recurring_type'] = rule_type if description_match.casefold() in row['description'].casefold() else 'auto'
     row['recurring_match'] = description_match if row['recurring_type'] != 'auto' else ''
     rows.append(row)
-  # Equal amounts alone are not proof: offer a suggestion, never silently exclude them.
-  by_amount = defaultdict(list)
-  for row in rows:
-    if not row['pending']:
-      by_amount[row['amount']].append(row)
-  for row in rows:
-    candidates = [other for other in by_amount[-row['amount']]
-                  if (other['account'], other['bank_account']) != (row['account'], row['bank_account'])
-                  and abs((date.fromisoformat(other['date']) - date.fromisoformat(row['date'])).days) <= 3]
-    row['possible_transfer'] = row['kind'] != 'transfer' and len(candidates) == 1
-  return rows
+  # Transfers are matched across every account, so infer before narrowing to one.
+  categorise.infer(rows)
+  return [r for r in rows if not account or r['account'] == account]
 
 
 def edit_transaction(store, transaction_id, category=None, kind=None, apply_rule=False, recurring_type=None):
@@ -130,6 +126,9 @@ def edit_transaction(store, transaction_id, category=None, kind=None, apply_rule
       store.conn.execute('DELETE FROM recurring_payments WHERE id=?', (rid,))
       if recurring_type in ('monthly', 'subscription'):
         store.conn.execute('INSERT INTO recurring_payments VALUES (?,?,?,?)', (rid, row['account'], row['merchant'], 'confirmed'))
+    if category == 'Savings' and kind is None:
+      # Saved money is moved, not spent.
+      kind = 'transfer'
     if category is not None:
       store.conn.execute('UPDATE transactions SET category_override=? WHERE id=?', (category, transaction_id))
       if apply_rule:

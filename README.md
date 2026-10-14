@@ -115,9 +115,19 @@ spending sync failures retain history and do not change balance snapshots.
   statements are not parsed; convert them to this CSV format first.
 - **Corrections:** categories and expense/income/refund/transfer classifications
   persist across syncs. Optionally apply a category rule to all past and future
-  transactions with the same merchant in that account. CSV credits start as income;
-  classify refunds and transfers yourself. Known Monzo pot/savings movements are
-  excluded; cross-account amount/date matches are suggestions requiring review.
+  transactions with the same merchant in that account. Choosing **Savings** also
+  makes a transaction a transfer.
+- **Automatic suggestions** (shown in italics; any choice you make wins): uncategorised
+  bank transactions (Santander, Amex, statements) take the category Monzo or you gave
+  the same merchant (e.g. `TESCO STORES` → Monzo's `Tesco`), then fall back to known
+  merchant keywords. An opposite amount in another account within three days becomes a
+  transfer when there is evidence it is your own money: a shared reference
+  (`MONZO-ABCDE` on both sides), a credit-card repayment, or one side already marked as a
+  transfer. Payments to investment platforms (HL, Vanguard, Trading 212, …) are Savings
+  transfers, card "payment received" credits are transfers, and money back from a merchant
+  you've paid from that account is a refund. Other amount/date matches stay suggestions
+  requiring review. These are worked out when transactions are read, so improving them
+  updates past transactions too.
 - **Mark monthly spending:** use the transaction's **recurring icon** at the end of the row to choose
   **Monthly spend** or **Monthly subscription**. The rule marks all past and future
   expenses with the same merchant (ignoring case and extra spaces) in that bank
@@ -193,6 +203,4 @@ syncs. Providers without transaction IDs use date/amount/description plus an
 occurrence index; changed descriptions or dates can make those records ambiguous.
 Pending entries are excluded from settled totals and removed when they disappear
 from a successful full response. Settled history and manual category/type overrides
-are retained. Positive transactions start as income: review refunds and mark
-credit-card repayments or movements between your accounts as transfers to prevent
-double counting.
+are retained. Lunch Flow and statement rows carry no time of day; Monzo rows do.
