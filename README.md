@@ -95,6 +95,71 @@ prices, chart labels and tooltips convert immediately using public Coinbase FX r
 refreshed every 15 minutes. Stored snapshots and sandbox quantities stay in their
 original units; dollar sandbox inputs convert back to GBP internally.
 
+## Financial advisor
+
+Open **Advisor** (`/advisor`) for a weekly, evidence-backed review. The overview also surfaces
+the latest findings. Reviews run on the server, including while the browser is closed; default
+is Monday at 09:00 Europe/London. Daily and manual-only schedules are available. **Run a review**
+does not move the scheduled slot. The database holds settings, the queue, inputs, reports,
+evidence snapshots, feedback and provider-reported usage/cost. Back these up with `networth.db`.
+No new service or external scheduler is required.
+
+The first version checks existing recorded data; it does not fetch financial news. Calculated
+reviews work without an AI key. Set your goals, horizon and upcoming costs in **Your brief &
+schedule**. These inform optional model commentary. The cash buffer target and selected cash
+accounts also drive calculated checks. Only GBP holdings in explicitly selected accounts count
+towards that buffer, net of negative GBP balances; stablecoins are excluded. Availability and
+underlying dates of manual valuations cannot be verified.
+
+Checks cover missing/stale/failed account data, unpriced assets, direct holding concentration,
+spending increases against the prior four-week average, and confirmed recurring charge increases.
+Concentration uses positive valued assets, excludes liabilities from its denominator, and does
+not treat a fund as a single company. Cached investment country/sector data is included only when
+no older than eight days; missing weights stay unknown. No classification network fetch happens
+during a review. Spending uses the existing corrections and transfer inference, excludes pending
+payments and transfers, and counts refunds when received. A trend alert requires transaction
+dates spanning both comparison periods and recent successful syncs for every included spending
+account. This is deliberately conservative: a quiet or partially imported account can prevent
+the comparison. Coverage dates still do not prove completeness.
+
+Snapshot change attribution compares current configured accounts with a snapshot at or before
+seven days ago. For matching positions it calculates old quantity × GBP unit price change and
+quantity change × new GBP unit price. New, removed, unpriced or otherwise unmatched positions
+stay in a separate residual. Price effects include FX and stale prices; quantity changes are
+not verified deposits or withdrawals. This is arithmetic attribution, **not an investment
+return calculation**. Values may differ by a penny from rounding.
+
+Optional commentary uses OpenRouter structured output. Set `OPENROUTER_API_KEY` in the server
+environment and restart the app. Local development also reads `.env` beside `accounts.yaml` on each request.
+Never put a provider key in the browser. Choose a compatible model in the advisor settings;
+the default is `google/gemini-2.5-flash`. No new model dependency is needed.
+
+When enabled and configured, one request receives at most 100,000 characters of prepared facts,
+selected account/asset names, spending categories, recurring merchants, your brief and recent
+feedback. It excludes account config, credentials, wallet address fields, bank IDs, raw account
+errors, individual payment records and their descriptions. Names and free-text context are still
+personal data. The request requires structured-output support, `data_collection="deny"` and
+`zdr=true`. Provider reference validation checks that evidence keys exist; it cannot establish
+that a model's interpretation is correct. There is no browsing or ability to change finances.
+
+Output is limited to 1,000–8,000 tokens (default 3,000); this bounds output size, not exact cost.
+There are no automatic provider retries. If the provider is unavailable, rejects the request,
+or returns invalid output, the review still saves its calculated findings with a warning.
+An empty holdings history never triggers a paid request. The run log shows token usage and cost
+when reported by the provider. Cross-process locking and a unique active-run index prevent
+overlapping reviews. One overdue review catches up after downtime; interrupted runs are marked
+failed and can be rerun. Settings changes update queued/future runs, not one already running.
+
+**Useful**, **Already know**, **Dismiss**, **Incorrect**, and written corrections persist by
+finding topic. Handled findings are hidden by default and remain accessible through the filter
+and historical reviews. Handled topics return as new when their signal materially changes,
+or when they recur after being absent from the previous review. Small cash/allocation changes
+are grouped into bands to reduce repetition; evidence still updates on every review. You can
+also toggle feedback back to new yourself. The global privacy toggle hides the whole
+review and brief, including narrative amounts and personal context. Written findings use GBP;
+dashboard summary amounts follow the display-currency toggle.
+
+
 ## Spending
 
 The **Spending** page combines GBP bank transactions into monthly spending, category,

@@ -11,7 +11,7 @@ from fastapi import Body, FastAPI, HTTPException, Query
 from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
-from networth import classify, reports, settings
+from networth import advisor, classify, reports, settings
 from networth.config import Config, ConfigError
 from networth.pricing import fetch_price_book
 from networth.runner import Runner
@@ -33,13 +33,19 @@ async def schedule(runner: Runner):
 def create_app(config: Config, run_scheduler: bool = True) -> FastAPI:
   store = Store(config.db_path)
   runner = Runner(config, store)
+  advisor.initial(store)
+  advisor_worker = advisor.Worker(store, config)
 
   @asynccontextmanager
   async def lifespan(app):
-    task = asyncio.create_task(schedule(runner)) if run_scheduler else None
-    yield
-    if task:
-      task.cancel()
+    tasks = [asyncio.create_task(schedule(runner)), asyncio.create_task(advisor_worker.run())] if run_scheduler else []
+    try:
+      yield
+    finally:
+      for task in tasks:
+        task.cancel()
+      if tasks:
+        await asyncio.gather(*tasks, return_exceptions=True)
 
   # Handlers are async so all SQLite access happens on the event loop thread.
   app = FastAPI(title='Net worth', lifespan=lifespan)
@@ -49,6 +55,9 @@ def create_app(config: Config, run_scheduler: bool = True) -> FastAPI:
 
   from networth.web.transactions import router as transactions_router
   app.include_router(transactions_router(config))
+
+  from networth.web.advisor import router as advisor_router
+  app.include_router(advisor_router(store, config, advisor_worker))
 
   fx_cache = {}
   fx_lock = asyncio.Lock()

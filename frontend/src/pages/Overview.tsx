@@ -1,4 +1,5 @@
 import { useMoney } from '../Currency'
+import { AdvisorPreview } from '../components/AdvisorPreview'
 import { Link } from 'react-router'
 import type { Summary } from '../api'
 import { categoryStyle } from '../colors'
@@ -69,6 +70,8 @@ export function Overview({ summary, onRefreshed }: Props) {
           ))}
         </div>
       </section>
+
+      <AdvisorPreview />
 
       {broken.length > 0 && (
         <div className="banner warn">
