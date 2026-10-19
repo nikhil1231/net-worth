@@ -273,3 +273,25 @@ def test_balance_connector_keeps_lunchflow_sign(tmp_path, monkeypatch):
   [holding] = asyncio.run(card.fetch())
   assert (holding.asset, holding.quantity) == ('GBP', -91.94)
   assert calls == [(lunchflow.BASE_URL + '/accounts/42/balance', {'x-api-key': 'env-key'})]
+
+
+def test_grouped_balance_connector_names_each_card(tmp_path, monkeypatch):
+  from networth.connectors import get_connector_class
+  monkeypatch.setenv('LUNCHFLOW_API_KEY', 'env-key')
+  calls = []
+  async def get(url, params=None, headers=None):
+    calls.append((url, headers))
+    if url.endswith('/accounts'):
+      return {'accounts': [dict(id=1, name='British Airways Amex'), dict(id=2, name='Platinum Cashback Amex')]}
+    amounts = {'1': -120.5, '2': -80.25}
+    return {'balance': {'amount': amounts[url.split('/')[-2]], 'currency': 'GBP'}}
+  monkeypatch.setattr(lunchflow.http, 'get_json', get)
+  cards = get_connector_class('lunchflow')(AccountConfig('Amex', 'lunchflow', 'liabilities', 60, {'account_ids': [1, 2]}), tmp_path)
+  holdings = asyncio.run(cards.fetch())
+  assert [(h.name, h.asset, h.quantity) for h in holdings] == [
+    ('British Airways Amex', 'GBP', -120.5), ('Platinum Cashback Amex', 'GBP', -80.25)]
+  assert calls == [
+    (lunchflow.BASE_URL + '/accounts', {'x-api-key': 'env-key'}),
+    (lunchflow.BASE_URL + '/accounts/1/balance', {'x-api-key': 'env-key'}),
+    (lunchflow.BASE_URL + '/accounts/2/balance', {'x-api-key': 'env-key'}),
+  ]

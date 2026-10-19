@@ -77,12 +77,12 @@ accounts:
     params:
       account_id: '12345'
 
-  - name: Amex
+  - name: American Express
     type: lunchflow       # credit cards come back negative when money is owed
     category: liabilities
     interval: 60
     params:
-      account_id: '12346'
+      account_ids: ['12346', '12347']  # several cards grouped in one account, one holding each
 
   - name: Savings
     type: manual

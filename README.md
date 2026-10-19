@@ -246,8 +246,10 @@ for spending only, without changing net-worth balances.
 Balances come from the same feed: give an account `type: lunchflow` and the Lunch
 Flow `account_id` (shown under Bank connections), and it reads
 `/accounts/{id}/balance`. Lunch Flow signs balances from your side, so money owed on
-a credit card is negative and a card in credit is positive. Name the account the
-same as its spending link so transactions and balance share one account.
+a credit card is negative and a card in credit is positive. Use `account_ids` instead
+of `account_id` to group several cards into one account; each card is a holding named
+after its Lunch Flow account. Name the account the same as its spending link so
+transactions and balance share one account.
 
 Save the selections and press **sync** to import immediately. The normal
 scheduler also checks Lunch Flow hourly while the app runs. Sync reads the
