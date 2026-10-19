@@ -11,14 +11,14 @@ import { sliceColors } from './BreakdownCard'
 const SIZE = 56
 
 /** The account page's "By product" split, tiny: no text until you hover a slice. */
-export function MiniDonut({ account }: { account: Account }) {
+export function MiniDonut({ account, colors }: { account: Account; colors: Map<string, string> }) {
   const { money } = useMoney()
   const [scenario] = useStoredState<Scenario>(`networth:scenario:${account.name}:`, EMPTY_SCENARIO)
   const slices = useMemo(() => {
     const detail = { ...account, classifications: {} } as unknown as AccountDetail
     return topSlices(breakdown(buildRows(detail, scenario), 'product'), 8).filter(s => s.value > 0)
   }, [account, scenario])
-  const colors = useMemo(() => sliceColors(slices), [slices])
+  const fills = useMemo(() => sliceColors(slices, label => colors.get(label)), [slices, colors])
   const [hover, setHover] = useState<{ label: string; x: number; y: number } | null>(null)
   const total = slices.reduce((s, x) => s + x.value, 0)
   const active = slices.find(s => s.label === hover?.label)
@@ -36,7 +36,7 @@ export function MiniDonut({ account }: { account: Account }) {
           {slices.map(s => (
             <Cell
               key={s.label}
-              fill={colors.get(s.label)}
+              fill={fills.get(s.label)}
               fillOpacity={hover && hover.label !== s.label ? 0.3 : 1}
               style={{ transition: 'fill-opacity .2s', outline: 'none' }}
               onMouseMove={e => setHover({ label: s.label, x: e.clientX, y: e.clientY })}
@@ -47,7 +47,7 @@ export function MiniDonut({ account }: { account: Account }) {
       {active && hover && createPortal(
         <div className="tooltip mini-donut-tip" style={{ left: hover.x + 14, top: hover.y + 14 }}>
           <div className="tooltip-row">
-            <span className="swatch" style={{ background: colors.get(active.label) }} />
+            <span className="swatch" style={{ background: fills.get(active.label) }} />
             <span>{active.label}</span>
             <b>{pct(active.value / total)}</b>
           </div>

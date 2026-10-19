@@ -3,26 +3,27 @@ import { Link } from 'react-router'
 import { ChartFrame, ChartTooltip as Tooltip } from './ChartTooltip'
 import { ResponsiveContainer, Treemap } from 'recharts'
 import type { Summary } from '../api'
-import { PALETTE } from '../colors'
+import { isCashAsset, PALETTE } from '../colors'
 import { pct } from '../format'
 
 type Tile = { name: string; label: string; size: number; fill: string; accounts: string[] }
 
 /** Every holding across every account, same assets merged, as one colourful wall of tiles. */
-export function HoldingsTreemap({ summary }: { summary: Summary }) {
+export function HoldingsTreemap({ summary, colors }: { summary: Summary; colors: Map<string, string> }) {
   const { money } = useMoney()
   const merged = new Map<string, Tile>()
   for (const account of summary.accounts) {
     for (const h of account.holdings) {
-      const key = h.asset === 'GBP' ? 'Cash' : h.asset
-      const tile = merged.get(key) ?? { name: key, label: h.asset === 'GBP' ? 'Cash' : (h.name ?? h.asset), size: 0, fill: '', accounts: [] }
+      const cash = isCashAsset(h.asset)
+      const key = cash ? 'Cash' : h.asset
+      const tile = merged.get(key) ?? { name: key, label: cash ? 'Cash' : (h.name ?? h.asset), size: 0, fill: '', accounts: [] }
       tile.size += h.value
       if (!tile.accounts.includes(account.name)) tile.accounts.push(account.name)
       merged.set(key, tile)
     }
   }
   const tiles = [...merged.values()].filter(t => t.size > 0).sort((a, b) => b.size - a.size)
-  tiles.forEach((t, i) => (t.fill = PALETTE[i % PALETTE.length]))
+  tiles.forEach((t, i) => (t.fill = colors.get(t.name) ?? PALETTE[i % PALETTE.length]))
   const total = tiles.reduce((s, t) => s + t.size, 0)
 
   return (

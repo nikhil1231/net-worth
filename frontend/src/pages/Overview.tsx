@@ -1,8 +1,9 @@
 import { useMoney } from '../Currency'
+import { useMemo } from 'react'
 import { AdvisorPreview } from '../components/AdvisorPreview'
 import { Link } from 'react-router'
 import type { Summary } from '../api'
-import { categoryStyle } from '../colors'
+import { assetColorMap, categoryStyle, isCashAsset } from '../colors'
 import { BreakdownCard } from '../components/BreakdownCard'
 import { CountUp } from '../components/CountUp'
 import { HistoryChart } from '../components/HistoryChart'
@@ -20,6 +21,14 @@ export function Overview({ summary, onRefreshed }: Props) {
 
   const categoryIndex = (c: string) => categories.findIndex(([k]) => k === c)
   const accountCategory = new Map(summary.accounts.map(a => [a.name, a.category]))
+  const holdingColors = useMemo(() => {
+    const totals = new Map<string, number>()
+    for (const account of summary.accounts) for (const h of account.holdings) {
+      const label = isCashAsset(h.asset) ? 'Cash' : h.asset
+      totals.set(label, (totals.get(label) ?? 0) + h.value)
+    }
+    return assetColorMap([...totals].sort((a, b) => b[1] - a[1]).map(([label]) => label))
+  }, [summary.accounts])
   const categorySlices: Slice[] = categories.map(([label, value]) => ({
     label, value, actualValue: value,
     share: summary.total ? value / summary.total : 0,
@@ -113,7 +122,7 @@ export function Overview({ summary, onRefreshed }: Props) {
                     <div className="account-name">{a.name}</div>
                     <div className="account-value">{money(a.value)}</div>
                   </div>
-                  <MiniDonut account={a} />
+                  <MiniDonut account={a} colors={holdingColors} />
                 </div>
                 <div className="account-meta">
                   <span>{pct(summary.total ? a.value / summary.total : 0)} of total</span>
@@ -129,7 +138,7 @@ export function Overview({ summary, onRefreshed }: Props) {
         </div>
       </section>
 
-      <HoldingsTreemap summary={summary} />
+      <HoldingsTreemap summary={summary} colors={holdingColors} />
     </div>
   )
 }

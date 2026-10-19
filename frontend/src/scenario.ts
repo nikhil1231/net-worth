@@ -1,4 +1,5 @@
 import type { AccountDetail, Classification, HoldingLocation } from './api'
+import { isCashAsset } from './colors'
 
 /** Sandbox changes to an account, kept per account in localStorage. */
 export type Scenario = {
@@ -123,8 +124,8 @@ class Splitter {
 }
 
 const KIND_ICON: Record<string, string> = { stock: '🏢', fund: '🧺', cash: '💷', unknown: '❔' }
-const rowLabel = (r: Row) => (r.asset === 'GBP' ? 'Cash' : r.asset)
-const rowIcon = (r: Row) => KIND_ICON[r.classification?.kind ?? (r.asset === 'GBP' ? 'cash' : 'unknown')]
+const rowLabel = (r: Row) => (isCashAsset(r.asset) ? 'Cash' : r.asset)
+const rowIcon = (r: Row) => KIND_ICON[r.classification?.kind ?? (isCashAsset(r.asset) ? 'cash' : 'unknown')]
 
 function totals(rows: Row[]) {
   return [rows.reduce((s, r) => s + r.value, 0), rows.reduce((s, r) => s + r.actualValue, 0)] as const
@@ -185,7 +186,7 @@ export function components(rows: Row[]): Slice[] {
   const ordered = [...visible].sort((a, b) => Number(a.classification?.kind === 'fund') - Number(b.classification?.kind === 'fund'))
   for (const row of ordered) {
     const c = row.classification
-    if (row.asset === 'GBP' || c?.kind === 'cash') {
+    if (isCashAsset(row.asset) || c?.kind === 'cash') {
       add('Cash', row.value, row.actualValue, row, '💷')
     } else if (c?.kind === 'fund' && c.holdings?.length) {
       for (const h of c.holdings) {

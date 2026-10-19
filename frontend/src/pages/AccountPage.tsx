@@ -4,7 +4,7 @@ import { useMemo, useState } from 'react'
 import { Link, useParams } from 'react-router'
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, XAxis, YAxis } from 'recharts'
 import { api, type Summary } from '../api'
-import { categoryStyle, KIND_EMOJI } from '../colors'
+import { categoryStyle, isCashAsset, KIND_EMOJI } from '../colors'
 import { BreakdownCard } from '../components/BreakdownCard'
 import { CountUp } from '../components/CountUp'
 import { DetailsModal } from '../components/DetailsModal'
@@ -46,8 +46,8 @@ export function AccountPage({ onRefreshed }: { onRefreshed: (summary: Summary) =
   const style = categoryStyle(detail.category)
   const productIcon = (asset: string) => (asset === 'Cash' ? '💷' : KIND_EMOJI[rows.find(r => r.asset === asset)?.classification?.kind ?? ''] ?? '🔹')
   const realCountries = countries.filter(c => !['Cash', 'Unknown', 'Other'].includes(c.label))
-  const cash = visible.filter(r => r.asset === 'GBP').reduce((s, r) => s + r.value, 0)
-  const biggest = [...visible].sort((a, b) => b.value - a.value).find(r => r.asset !== 'GBP')
+  const cash = visible.filter(r => isCashAsset(r.asset)).reduce((s, r) => s + r.value, 0)
+  const biggest = [...visible].sort((a, b) => b.value - a.value).find(r => !isCashAsset(r.asset))
   const usShare = countries.find(c => c.label === 'United States')?.share ?? 0
 
   return (

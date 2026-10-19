@@ -18,6 +18,14 @@ export const OTHER_COLOR = '#b8b2cc'
 export const CASH_COLOR = '#18c29c'
 export const UNKNOWN_COLOR = '#d6d1e6'
 
+/** Fiat and stablecoins count as cash wherever they're held, matching CASH_ASSETS in networth/reports.py. */
+const CASH_ASSETS: Record<string, true> = {
+  GBP: true, USD: true, EUR: true, USDC: true, 'USDC.E': true, USDT: true, USDB: true, DAI: true,
+  USDS: true, USDE: true, PYUSD: true, FDUSD: true, TUSD: true, BUSD: true, GUSD: true, USDP: true,
+  FRAX: true, LUSD: true, EURC: true,
+}
+export const isCashAsset = (asset: string) => CASH_ASSETS[asset.toUpperCase()] === true
+
 const CATEGORY: Record<string, { color: string; emoji: string }> = {
   investments: { color: '#7c5cff', emoji: '📈' },
   crypto: { color: '#ffb020', emoji: '💰' },
@@ -31,12 +39,39 @@ export function categoryStyle(category: string, index = 0) {
   return CATEGORY[category] ?? { color: PALETTE[(index + 4) % PALETTE.length], emoji: '✨' }
 }
 
+const SPECIAL_COLORS: Record<string, string> = {
+  Other: OTHER_COLOR, Cash: CASH_COLOR, Unknown: UNKNOWN_COLOR,
+}
+
+// Keep the cash green out of the asset palette so a holding never matches the Cash slice.
+const ASSET_PALETTE = PALETTE.filter(color => color !== CASH_COLOR)
+
 /** Stable colour per label, so e.g. "Taiwan" is the same colour on every chart. */
 export function colorFor(label: string, index: number) {
-  if (label === 'Other') return OTHER_COLOR
-  if (label === 'Cash') return CASH_COLOR
-  if (label === 'Unknown') return UNKNOWN_COLOR
-  return PALETTE[index % PALETTE.length]
+  return SPECIAL_COLORS[label] ?? PALETTE[index % PALETTE.length]
+}
+
+/**
+ * One colour per label, in the order given (normally by total value), so an asset keeps its
+ * colour between the account donuts and the treemap. Labels stay distinct, including past the
+ * end of the palette, so neighbouring slices never share a colour.
+ */
+export function assetColorMap(labels: Iterable<string>) {
+  const map = new Map<string, string>()
+  let index = 0
+  for (const label of labels) {
+    if (map.has(label)) continue
+    const special = SPECIAL_COLORS[label]
+    if (special) {
+      map.set(label, special)
+      continue
+    }
+    map.set(label, index < ASSET_PALETTE.length
+      ? ASSET_PALETTE[index]
+      : `hsl(${((index * 137.508) % 360).toFixed(2)} 72% 62%)`)
+    index++
+  }
+  return map
 }
 
 export const KIND_EMOJI: Record<string, string> = { stock: '🏢', fund: '🧺', cash: '💷', unknown: '❔' }
