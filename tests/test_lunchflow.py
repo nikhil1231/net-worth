@@ -56,6 +56,7 @@ def test_report_checks_remote_connections_and_keeps_month_and_history_separate(s
   result = client.get('/api/spending?month=2026-11').json()
   accounts = {a['name']: a for a in result['accounts']}
   assert len(result['transactions']) == 1
+  assert len(client.get('/api/spending?month=2026-11&period=all').json()['transactions']) == 3
   assert accounts['Santander']['count'] == 2
   assert accounts['American Express']['connection_status'] == 'connected'
   assert accounts['American Express']['institution'] == 'American Express'
@@ -162,8 +163,8 @@ def test_failure_isolated_and_private_history_retained(setup):
   asyncio.run(lunchflow.sync(store, config))
   failures.add(1)
   records[2] = [transaction(account_id=2)]
-  result = asyncio.run(lunchflow.sync(store, config))
-  assert result[0]['error'] and result[1]['count'] == 1
+  result = {r['account']: r for r in asyncio.run(lunchflow.sync(store, config))}
+  assert result['Santander']['error'] and result['American Express']['count'] == 1
   assert 'secret-key' not in str(result)
   assert len(spending.transactions(store)) == 2
   status = store.conn.execute("SELECT * FROM spending_status WHERE account='Santander'").fetchone()
@@ -187,7 +188,7 @@ def test_csv_cutoff_and_block_further_csv_imports(setup):
 
 
 @pytest.mark.parametrize('mappings', [
-  [mapping(), mapping('2', 'Santander')], [mapping('3')], [mapping(account='Monzo')],
+  [mapping(), mapping()], [mapping('3')], [mapping(account='Monzo')],
   [mapping(start_date='invalid')], [mapping(account='santander')], [mapping('999')],
 ])
 def test_invalid_bindings_do_not_save_key_or_mapping(setup, mappings):
@@ -352,3 +353,32 @@ def test_grouped_balance_connector_names_each_card(tmp_path, monkeypatch):
     (lunchflow.BASE_URL + '/accounts/1/balance', {'x-api-key': 'env-key'}),
     (lunchflow.BASE_URL + '/accounts/2/balance', {'x-api-key': 'env-key'}),
   ]
+
+
+def test_several_cards_share_one_account(setup):
+  store, config, _, records, failures = setup
+  configure(setup, [mapping('1', 'American Express'), mapping('2', 'American Express')])
+  records[1] = [transaction('a')]
+  records[2] = [transaction('b', account_id=2, isPending=True)]
+  result = asyncio.run(lunchflow.sync(store, config))
+  assert result == [dict(account='American Express', count=2, error=None)]
+  # One card's sync never removes the other card's pending rows.
+  records[1] = []
+  asyncio.run(lunchflow.sync(store, config))
+  assert sum(r['pending'] for r in spending.transactions(store)) == 1
+  failures.add(1)
+  result = asyncio.run(lunchflow.sync(store, config))
+  assert result[0]['error'] and result[0]['count'] == 1  # the healthy card still syncs
+
+
+def test_accounts_yaml_ids_link_without_setup(setup):
+  store, config, _, records, _ = setup
+  lunchflow.env_path(config).write_text('LUNCHFLOW_API_KEY=secret-key\n')
+  config.accounts.append(AccountConfig('Amex', 'lunchflow', 'liabilities', 60, params={'account_ids': ['1', '2']}))
+  records[1] = [transaction('a')]
+  records[2] = [transaction('b', account_id=2)]
+  assert asyncio.run(lunchflow.sync(store, config, due_only=True)) == [dict(account='Amex', count=2, error=None)]
+  result = TestClient(create_app(config, run_scheduler=False)).get('/api/spending?month=2026-10').json()
+  amex = next(a for a in result['accounts'] if a['name'] == 'Amex')
+  assert amex['connection_status'] == 'connected' and amex['institution']
+  assert len(result['transactions']) == 2

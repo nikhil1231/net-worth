@@ -52,9 +52,43 @@ async def discover(key):
     raise LunchFlowError('Lunch Flow returned an invalid account list.') from None
 
 
+def config_ids(account):
+  """The Lunch Flow account IDs accounts.yaml assigns to an app account (account_id or account_ids)."""
+  ids = account.params.get('account_ids') or ([account.params['account_id']] if account.params.get('account_id') else [])
+  return [str(i).strip() for i in ids if str(i).strip()]
+
+
+def auto_link(store, config):
+  """Link transaction sources straight from accounts.yaml, so there is no setup step.
+  An existing binding keeps its paused/enabled flag and start date."""
+  existing = {r['id']: dict(r) for r in store.conn.execute('SELECT * FROM lunchflow_accounts')}
+  with store.conn:
+    for a in config.accounts:
+      if a.type != 'lunchflow' or a.error or a.category not in ('cash', 'liabilities'):
+        continue
+      ids = config_ids(a)
+      for remote_id in ids:
+        row = existing.get(remote_id)
+        if row:
+          if row['account'] != a.name:  # moved to another account in accounts.yaml
+            store.conn.execute('UPDATE lunchflow_accounts SET account=? WHERE id=?', (a.name, remote_id))
+          continue
+        last_csv = store.conn.execute("SELECT MAX(date) FROM transactions WHERE account=? AND source='csv'", (a.name,)).fetchone()[0]
+        start = (date.fromisoformat(last_csv) + timedelta(days=1)).isoformat() if last_csv else None
+        previous = store.conn.execute("SELECT bank_account FROM transactions WHERE account=? AND source='csv' LIMIT 1", (a.name,)).fetchone()
+        # Share a statement-import bank identity only when one source feeds the account; with several
+        # cards each keeps its own, so one card's sync never touches another's pending rows.
+        bank_account = previous['bank_account'] if previous and len(ids) == 1 else 'lunchflow:' + remote_id
+        store.conn.execute(
+          'INSERT INTO lunchflow_accounts(id,account,institution,start_date,bank_account) VALUES (?,?,?,?,?)',
+          (remote_id, a.name, '', start, bank_account))
+
+
 async def check_connections(store, config, accounts):
   """Verify linked sources are still accessible, without importing or changing history."""
-  bindings = {r['account']: dict(r) for r in store.conn.execute('SELECT * FROM lunchflow_accounts WHERE enabled=1')}
+  bindings = defaultdict(list)
+  for r in store.conn.execute('SELECT * FROM lunchflow_accounts WHERE enabled=1'):
+    bindings[r['account']].append(dict(r))
   linked = [a for a in accounts if a['name'] in bindings]
   if not linked:
     return
@@ -66,13 +100,22 @@ async def check_connections(store, config, accounts):
       a.update(connection_status='unverified', connection_detail=detail)
     return
   for a in linked:
-    source = remote.get(bindings[a['name']]['id'])
-    if not source:
-      a.update(connection_status='unavailable', connection_detail='Account is missing from Lunch Flow. Check the bank connection and API destination Account Access settings.')
-    elif source['status'] != 'ACTIVE':
-      a.update(connection_status='unavailable', connection_detail='Lunch Flow reports this bank account as inactive. Reconnect it in Lunch Flow, then retry.')
-    elif source['currency'] not in ('', 'GBP'):
-      a.update(connection_status='unavailable', connection_detail='This source no longer provides GBP transactions.')
+    for binding in bindings[a['name']]:
+      source = remote.get(binding['id'])
+      if source and source.get('institution') and source['institution'] != binding['institution']:
+        with store.conn:
+          store.conn.execute('UPDATE lunchflow_accounts SET institution=? WHERE id=?', (source['institution'], binding['id']))
+        a['institution'] = source['institution']
+      label = f"{source.get('name', binding['id'])}: " if source and len(bindings[a['name']]) > 1 else ''
+      if not source:
+        a.update(connection_status='unavailable', connection_detail=f"Lunch Flow account {binding['id']} is missing. Check the bank connection and Account Access settings in Lunch Flow.")
+      elif source['status'] != 'ACTIVE':
+        a.update(connection_status='unavailable', connection_detail=label + 'Lunch Flow reports this bank as inactive. Reconnect it in the Lunch Flow app; this page picks it up automatically.')
+      elif source['currency'] not in ('', 'GBP'):
+        a.update(connection_status='unavailable', connection_detail=label + 'This source no longer provides GBP transactions.')
+      else:
+        continue
+      break
 
 
 def state(store, config):
@@ -89,16 +132,17 @@ def state(store, config):
 async def configure(store, config, mappings):
   key = api_key(config)
   accounts = {a['id']: a for a in await discover(key)}
-  seen_ids, seen_names, validated = set(), set(), []
+  seen_ids, validated = set(), []
   old = {r['id']: dict(r) for r in store.conn.execute('SELECT * FROM lunchflow_accounts')}
   for mapping in mappings:
     remote_id, name = mapping['id'], mapping['account'].strip()
     # Some providers omit account currency; transaction currencies are always checked before saving.
     if remote_id not in accounts or accounts[remote_id]['currency'] not in ('', 'GBP') or accounts[remote_id]['status'] != 'ACTIVE':
       raise LunchFlowError('Choose an active GBP Lunch Flow account.')
-    if not name or len(name) > 100 or remote_id in seen_ids or name.casefold() in seen_names:
-      raise LunchFlowError('Choose a unique account name for each bank account.')
-    seen_ids.add(remote_id); seen_names.add(name.casefold())
+    # Several sources may share one app account (e.g. two Amex cards); each source is linked once.
+    if not name or len(name) > 100 or remote_id in seen_ids:
+      raise LunchFlowError('Choose an account name for each bank account.')
+    seen_ids.add(remote_id)
     local = next((a for a in config.accounts if a.name == name), None)
     if any(a.name.casefold() == name.casefold() and a.name != name for a in config.accounts):
       raise LunchFlowError('Use the exact existing app account name to link it.')
@@ -112,13 +156,12 @@ async def configure(store, config, mappings):
         raise LunchFlowError('Start date must be YYYY-MM-DD.') from None
     if remote_id in old and old[remote_id]['account'] != name:
       raise LunchFlowError('Keep the saved account name; rename linked accounts through Settings.')
-    if any(r['account'].casefold() == name.casefold() and rid != remote_id for rid, r in old.items()):
-      raise LunchFlowError('This app account is already linked to a different Lunch Flow account.')
     last_csv = store.conn.execute("SELECT MAX(date) FROM transactions WHERE account=? AND source='csv'", (name,)).fetchone()[0]
     if last_csv and (not start or start <= last_csv):
       raise LunchFlowError(f'{name} has statement imports through {last_csv}. Choose a later start date to avoid duplicates.')
     previous = store.conn.execute("SELECT bank_account FROM transactions WHERE account=? AND source='csv' LIMIT 1", (name,)).fetchone()
-    bank_account = old.get(remote_id, {}).get('bank_account') or (previous['bank_account'] if previous else 'lunchflow:' + remote_id)
+    shared = sum(m['account'].strip() == name for m in mappings) > 1
+    bank_account = old.get(remote_id, {}).get('bank_account') or (previous['bank_account'] if previous and not shared else 'lunchflow:' + remote_id)
     validated.append((remote_id, name, accounts[remote_id]['institution'], start, bank_account))
   with store.conn:
     store.conn.execute('UPDATE lunchflow_accounts SET enabled=0')
@@ -172,35 +215,58 @@ def normalise(raw_rows, binding):
   return rows
 
 
+_sync_lock = asyncio.Lock()
+
+
+def syncing():
+  return _sync_lock.locked()
+
+
 async def sync(store, config, due_only=False):
-  outcomes = []
-  for binding in store.conn.execute('SELECT * FROM lunchflow_accounts WHERE enabled=1').fetchall():
-    status = store.conn.execute('SELECT last_success FROM spending_status WHERE account=?', (binding['account'],)).fetchone()
-    if due_only and status and status['last_success'] and datetime.fromisoformat(now()) - datetime.fromisoformat(status['last_success']) < timedelta(hours=1):
-      continue
-    try:
-      params = {'include_pending': 'true'}
-      if binding['start_date']:
-        params['from'] = binding['start_date']
-      payload = await asyncio.wait_for(get(f"/accounts/{binding['id']}/transactions", api_key(config), params), 60)
-      rows = normalise(payload['transactions'], binding)
-      if 'total' in payload and payload['total'] != len(payload['transactions']):
-        raise LunchFlowError('Lunch Flow returned incomplete history. Existing transactions are retained; try again later.')
-      # The Personal API returns all available transactions (no pagination).
-      # Missing pending entries have settled or disappeared; settled history is always retained.
+  async with _sync_lock:  # the scheduler, the sync button and background retries can overlap
+    auto_link(store, config)
+    groups = defaultdict(list)
+    for binding in store.conn.execute('SELECT * FROM lunchflow_accounts WHERE enabled=1 ORDER BY account, id').fetchall():
+      groups[binding['account']].append(binding)
+    outcomes = []
+    for account, bindings in groups.items():
+      status = store.conn.execute('SELECT last_success, last_error FROM spending_status WHERE account=?', (account,)).fetchone()
+      # Healthy accounts sync hourly; one that failed or never synced retries on every call.
+      if due_only and status and status['last_success'] and not status['last_error'] \
+          and datetime.fromisoformat(now()) - datetime.fromisoformat(status['last_success']) < timedelta(hours=1):
+        continue
+      count, errors = 0, []
+      for binding in bindings:
+        try:
+          count += await _sync_binding(store, config, binding)
+        except Exception as exc:
+          errors.append(str(exc) if isinstance(exc, LunchFlowError) else 'Lunch Flow sync failed. Try again; existing transactions are retained.')
+      error = ' '.join(dict.fromkeys(errors)) or None
       with store.conn:
-        incoming = {r['id'] for r in rows}
-        pending = store.conn.execute("""SELECT id FROM transactions WHERE bank_account=? AND source='lunchflow'
-          AND pending=1 AND date>=?""", (binding['bank_account'] or 'lunchflow:' + binding['id'], binding['start_date'] or '')).fetchall()
-        store.conn.executemany('DELETE FROM transactions WHERE id=?', [(r['id'],) for r in pending if r['id'] not in incoming])
-        spending.save_transactions(store, rows)
-        store.conn.execute('''INSERT INTO spending_status(account,last_success) VALUES (?,?)
-          ON CONFLICT(account) DO UPDATE SET last_success=excluded.last_success,last_error=NULL''', (binding['account'], now()))
-      outcomes.append(dict(account=binding['account'], count=len(rows), error=None))
-    except Exception as exc:
-      error = str(exc) if isinstance(exc, LunchFlowError) else 'Lunch Flow sync failed. Try again; existing transactions are retained.'
-      with store.conn:
-        store.conn.execute('''INSERT INTO spending_status(account,last_error) VALUES (?,?)
-          ON CONFLICT(account) DO UPDATE SET last_error=excluded.last_error''', (binding['account'], error))
-      outcomes.append(dict(account=binding['account'], count=0, error=error))
-  return outcomes
+        if error:
+          store.conn.execute("""INSERT INTO spending_status(account,last_error) VALUES (?,?)
+            ON CONFLICT(account) DO UPDATE SET last_error=excluded.last_error""", (account, error))
+        else:
+          store.conn.execute("""INSERT INTO spending_status(account,last_success) VALUES (?,?)
+            ON CONFLICT(account) DO UPDATE SET last_success=excluded.last_success,last_error=NULL""", (account, now()))
+      outcomes.append(dict(account=account, count=count, error=error))
+    return outcomes
+
+
+async def _sync_binding(store, config, binding):
+  params = {'include_pending': 'true'}
+  if binding['start_date']:
+    params['from'] = binding['start_date']
+  payload = await asyncio.wait_for(get(f"/accounts/{binding['id']}/transactions", api_key(config), params), 60)
+  rows = normalise(payload['transactions'], binding)
+  if 'total' in payload and payload['total'] != len(payload['transactions']):
+    raise LunchFlowError('Lunch Flow returned incomplete history. Existing transactions are retained; try again later.')
+  # The Personal API returns all available transactions (no pagination).
+  # Missing pending entries have settled or disappeared; settled history is always retained.
+  with store.conn:
+    incoming = {r['id'] for r in rows}
+    pending = store.conn.execute("""SELECT id FROM transactions WHERE bank_account=? AND source='lunchflow'
+      AND pending=1 AND date>=?""", (binding['bank_account'] or 'lunchflow:' + binding['id'], binding['start_date'] or '')).fetchall()
+    store.conn.executemany('DELETE FROM transactions WHERE id=?', [(r['id'],) for r in pending if r['id'] not in incoming])
+    spending.save_transactions(store, rows)
+  return len(rows)

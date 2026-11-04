@@ -43,7 +43,7 @@ CREATE TABLE IF NOT EXISTS spending_status (
   account TEXT PRIMARY KEY, last_success TEXT, last_error TEXT, history_from TEXT
 );
 CREATE TABLE IF NOT EXISTS lunchflow_accounts (
-  id TEXT PRIMARY KEY, account TEXT NOT NULL UNIQUE, institution TEXT NOT NULL,
+  id TEXT PRIMARY KEY, account TEXT NOT NULL, institution TEXT NOT NULL,
   start_date TEXT, enabled INTEGER NOT NULL DEFAULT 1, bank_account TEXT NOT NULL DEFAULT ''
 );
 '''
@@ -61,6 +61,16 @@ def initialise(store):
     store.conn.execute('ALTER TABLE transactions ADD COLUMN label TEXT')
   if 'bank_account' not in {r['name'] for r in store.conn.execute('PRAGMA table_info(lunchflow_accounts)')}:
     store.conn.execute("ALTER TABLE lunchflow_accounts ADD COLUMN bank_account TEXT NOT NULL DEFAULT ''")
+  table_sql = store.conn.execute("SELECT sql FROM sqlite_master WHERE name='lunchflow_accounts'").fetchone()[0]
+  if 'UNIQUE' in table_sql:
+    # Several Lunch Flow sources (e.g. two Amex cards) can feed one app account.
+    store.conn.executescript('''
+      ALTER TABLE lunchflow_accounts RENAME TO lunchflow_accounts_old;
+      CREATE TABLE lunchflow_accounts (
+        id TEXT PRIMARY KEY, account TEXT NOT NULL, institution TEXT NOT NULL,
+        start_date TEXT, enabled INTEGER NOT NULL DEFAULT 1, bank_account TEXT NOT NULL DEFAULT '');
+      INSERT INTO lunchflow_accounts SELECT id, account, institution, start_date, enabled, bank_account FROM lunchflow_accounts_old;
+      DROP TABLE lunchflow_accounts_old;''')
   store.conn.commit()
 
 
@@ -216,7 +226,12 @@ def recurring(store, rows):
   return sorted(result, key=lambda r: (not r['active'], r['next_date']))
 
 
-def report(store, config, month, account=None):
+PERIODS = ('month', '3m', '6m', 'ytd', '1y', 'all')
+
+
+def report(store, config, month, account=None, period='month'):
+  if period not in PERIODS:
+    raise ValueError('Period must be one of ' + ', '.join(PERIODS))
   try:
     start = date.fromisoformat(month + '-01')
   except ValueError:
@@ -224,13 +239,22 @@ def report(store, config, month, account=None):
   if not 2000 <= start.year <= 2100:
     raise ValueError('Choose a month between 2000 and 2100')
   end = add_months(start, 1)
+  today = datetime.now(ZoneInfo('Europe/London')).date()
+  if period != 'month':
+    # Rolling ranges end today; the pace chart then shows the current month.
+    start = today.replace(day=1)
+    end = today + timedelta(days=1)
+    month = start.isoformat()[:7]
+  window_start = {'month': start, '3m': add_months(today, -3), '6m': add_months(today, -6),
+                  'ytd': today.replace(month=1, day=1), '1y': add_months(today, -12),
+                  'all': date(2000, 1, 1)}[period]
   all_rows = transactions(store)
   lunchflow = {r['account']: dict(r) for r in store.conn.execute('SELECT * FROM lunchflow_accounts')}
   active_names = {a.name for a in config.accounts} | lunchflow.keys()
   all_rows = [r for r in all_rows if r['account'] in active_names]
   recurring_rows = recurring(store, [r for r in all_rows if not account or r['account'] == account])
   rows = [r for r in all_rows if not account or r['account'] == account]
-  selected = [r for r in rows if start.isoformat() <= r['date'] < end.isoformat()]
+  selected = [r for r in rows if window_start.isoformat() <= r['date'] < end.isoformat()]
   def totals(items):
     return dict(spent=round(sum(-r['amount'] for r in items if r['kind']=='expense' and not r['pending'])/100, 2),
                 refunds=round(sum(r['amount'] for r in items if r['kind']=='refund' and not r['pending'])/100, 2),
@@ -245,12 +269,14 @@ def report(store, config, month, account=None):
       cats[r['category']] -= r['amount']
   categories = [dict(category=c, amount=v/100) for c,v in sorted(cats.items(), key=lambda item: -item[1])]
   history = []
-  for offset in range(-5, 1):
+  first = min((r['date'] for r in rows), default=start.isoformat())
+  span_start = max(window_start, date.fromisoformat(first)) if period == 'all' else window_start
+  months_back = max(5, (start.year - span_start.year) * 12 + start.month - span_start.month)
+  for offset in range(-months_back, 1):
     left = add_months(start, offset).isoformat()
     right = add_months(start, offset+1).isoformat()
     history.append(dict(month=left[:7], **totals([r for r in rows if left<=r['date']<right])))
   previous = add_months(start, -1)
-  today = datetime.now(ZoneInfo('Europe/London')).date()
   current_days = min(today.day, calendar.monthrange(start.year,start.month)[1]) if month == today.strftime('%Y-%m') else calendar.monthrange(start.year,start.month)[1]
   pace = []
   current_total = previous_total = 0
@@ -277,21 +303,21 @@ def report(store, config, month, account=None):
                          **{k:v for k,v in statuses.get(name,{}).items() if k!='account'}))
     a = accounts[-1]
     if name in lunchflow and not a['sync_enabled']:
-      status, detail = 'paused', 'Transaction sync is paused. Open Bank connections to enable it.'
+      status, detail = 'paused', 'Transaction sync is paused in Transaction settings.'
     elif kind == 'lunchflow' and name not in lunchflow:
-      status, detail = 'unlinked', 'No transaction source linked. Select this account in Bank connections, then sync.'
+      status, detail = 'unlinked', 'No Lunch Flow account_id in accounts.yaml for this account, so there is nothing to sync.'
     elif kind not in ('monzo', 'lunchflow'):
       status, detail = 'manual', 'Statement imports only; there is no automatic bank connection.'
     elif a.get('last_error'):
       status, detail = 'error', a['last_error']
     elif not a.get('last_success'):
-      status, detail = 'pending', 'No successful transaction sync yet. Press sync to import history.'
+      status, detail = 'pending', 'No successful transaction sync yet. Syncing in the background.'
     elif datetime.fromisoformat(now()) - datetime.fromisoformat(a['last_success']) > timedelta(hours=24):
-      status, detail = 'stale', 'No successful transaction sync in the last 24 hours. Press sync to check the connection.'
+      status, detail = 'stale', 'No successful transaction sync in the last 24 hours. Retrying in the background.'
     else:
       status, detail = 'connected', 'Last transaction sync succeeded. This does not guarantee complete bank history.'
     a.update(connection_status=status, connection_detail=detail)
-  return dict(month=month, summary=summary, categories=categories, history=history, pace=pace,
+  return dict(month=month, period=period, start=window_start.isoformat(), summary=summary, categories=categories, history=history, pace=pace,
               transactions=selected, recurring=recurring_rows, accounts=accounts, category_options=CATEGORIES,
               review_count=sum(r['category']=='Uncategorised' or r['possible_transfer'] for r in selected))
 

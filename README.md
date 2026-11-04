@@ -213,14 +213,13 @@ IDs, overlapping partial files containing identical same-day payments can be
 ambiguous. Transaction amounts are stored as integer pence. The privacy toggle
 hides spending amounts, merchant descriptions and charts.
 
-The Transactions count is for the selected month and filters; the line below it
-also shows the account's stored history across all months. Bank pills beside the
-heading show a tick after a successful transaction sync within 24 hours. Lunch Flow
-sources are also checked against its current accessible, active account list when
-the page loads. Missing, inactive, unlinked, paused, failed or overdue sources are
-flagged with an explanation; a failed availability check is shown as unverified.
-Open a pill to manage Bank connections. Statement-only accounts have no automatic
-connection. These checks do not force a bank refresh or prove complete history.
+Pick a period beside the month picker: Month (the picked month), 3M, 6M, YTD, 1Y or
+All. The choice is remembered in the browser. Bank pills beside the Transactions heading
+show each account's sync state; clicking one syncs now. Lunch Flow sources are linked
+automatically from `account_id` / `account_ids` in accounts.yaml (several cards can feed one
+account), so there is no setup step. When the page sees an account that failed, never
+synced or is overdue, it re-syncs in the background (at most every 5 minutes) and refreshes
+itself. A bank Lunch Flow reports as inactive must be reconnected in the Lunch Flow app.
 
 Transaction history is retained indefinitely: the 89-day sync window limits what
 Monzo can return on each routine fetch, not what this app keeps. Back up the SQLite

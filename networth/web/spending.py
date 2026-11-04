@@ -1,4 +1,7 @@
 """Spending endpoints; imports are parsed identically for preview and commit."""
+import asyncio
+import logging
+import time
 from typing import Literal
 
 from fastapi import APIRouter, HTTPException, Query
@@ -39,16 +42,46 @@ class LunchFlowSetup(BaseModel):
   mappings: list[LunchFlowMapping] = Field(max_length=100)
 
 
+log = logging.getLogger(__name__)
+RETRYABLE = ('pending', 'stale', 'error')  # a fresh sync can fix these; 'unavailable' needs the bank app
+RETRY_COOLDOWN_SECONDS = 300
+
+
 def router(store, config, runner):
   api = APIRouter(prefix='/api/spending')
+  background = {'task': None, 'last': 0.0}
+
+  async def resync(monzo_names):
+    try:
+      async with runner.lock:  # shared with the scheduler so rotating OAuth tokens cannot race
+        for name in monzo_names:
+          await spending.sync_monzo(store, config, name)
+        await lunchflow.sync(store, config, due_only=True)
+    except Exception:
+      log.exception('background spending sync failed')
+
+  def retry_in_background(accounts):
+    """Reconnect without a button: an account that isn't syncing gets a fresh sync, at most every 5 min."""
+    retry = [a for a in accounts if a['connection_status'] in RETRYABLE and a['type'] in ('monzo', 'lunchflow')]
+    task = background['task']
+    if task and not task.done():
+      return True
+    if not retry or time.monotonic() - background['last'] < RETRY_COOLDOWN_SECONDS:
+      return False
+    background['last'] = time.monotonic()
+    background['task'] = asyncio.create_task(resync([a['name'] for a in retry if a['type'] == 'monzo']))
+    return True
 
   @api.get('')
-  async def report(month: str = Query(pattern=r'^\d{4}-\d{2}$'), account: str | None = None):
+  async def report(month: str = Query(pattern=r'^\d{4}-\d{2}$'), account: str | None = None,
+                   period: Literal[spending.PERIODS] = 'month'):
     try:
+      lunchflow.auto_link(store, config)
       if account and not store.conn.execute('SELECT 1 FROM lunchflow_accounts WHERE account=?', (account,)).fetchone():
         config.account(account)
-      result = spending.report(store, config, month, account)
+      result = spending.report(store, config, month, account, period)
       await lunchflow.check_connections(store, config, result['accounts'])
+      result['syncing'] = retry_in_background(result['accounts'])
       return result
     except (ValueError, LookupError, ConfigError) as e:
       raise HTTPException(400, str(e))

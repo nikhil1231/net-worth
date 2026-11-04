@@ -173,7 +173,9 @@ export type RecurringPayment = {
   overdue: boolean; variable: boolean; price_change: number
   active: boolean; inactive: boolean; coverage_stale: boolean; description_contains: string
 }
+export type SpendingPeriod = 'month' | '3m' | '6m' | 'ytd' | '1y' | 'all'
 export type SpendingReport = {
+  period: SpendingPeriod; start: string; syncing: boolean
   month: string
   summary: { spent: number; refunds: number; net_spent: number; income: number; pending: number; committed: number }
   categories: { category: string; amount: number }[]
@@ -199,7 +201,7 @@ export const spendingApi = {
   lunchflow: () => request<LunchFlowState>('/api/spending/lunchflow'),
   lunchflowAccounts: () => request<LunchFlowAccount[]>('/api/spending/lunchflow/accounts', { method: 'POST' }),
   saveLunchflow: (mappings: LunchFlowMapping[]) => request<LunchFlowState>('/api/spending/lunchflow', jsonBody('PUT', { mappings })),
-  report: (month: string, account: string) => request<SpendingReport>(`/api/spending?month=${month}${account ? `&account=${encodeURIComponent(account)}` : ''}`),
+  report: (month: string, account: string, period: SpendingPeriod = 'month') => request<SpendingReport>(`/api/spending?month=${month}&period=${period}${account ? `&account=${encodeURIComponent(account)}` : ''}`),
   sync: () => request<{ account: string; count: number; error: string | null }[]>('/api/spending/sync', { method: 'POST' }),
   edit: (id: string, values: { category?: string; kind?: string; apply_rule?: boolean; recurring_type?: RecurringType; label?: string }) => request(`/api/spending/transactions/${encodeURIComponent(id)}`, jsonBody('PATCH', values)),
   recurring: (r: RecurringPayment, status: RecurringPayment['status']) => request(`/api/spending/recurring/${r.id}`, jsonBody('PATCH', { account: r.account, merchant: r.merchant, status })),
