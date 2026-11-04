@@ -24,6 +24,17 @@ def tx(id, day='2026-10-01', amount=-1000, account='Monzo', merchant='Shop', **v
               description=merchant, amount=amount, category='Shopping', kind='expense' if amount<0 else 'income', pending=0, source='monzo', **values)
 
 
+def test_missing_credit_card_transaction_link_is_visible(setup):
+  store, config = setup
+  config.accounts.append(AccountConfig('American Express', 'lunchflow', 'liabilities', 60))
+  accounts = {a['name']: a for a in spending.report(store, config, '2026-11')['accounts']}
+  assert accounts['American Express']['count'] == 0
+  assert accounts['American Express']['connection_status'] == 'unlinked'
+  assert not accounts['American Express']['sync_enabled']
+  assert accounts['Monzo']['connection_status'] == 'pending'
+  assert accounts['Santander']['connection_status'] == 'manual'
+
+
 def test_totals_refunds_pending_and_transfers(setup):
   store, config = setup
   rows = [tx('purchase'), tx('refund',amount=300), tx('salary',amount=200000),tx('pending',amount=-2500),tx('pot',amount=-10000)]

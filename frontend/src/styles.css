@@ -886,6 +886,11 @@ tr:hover .transaction-label-trigger, .transaction-label-trigger:focus-visible { 
 .spending-table .transaction-date span { display: block; margin-top: 2px; font-variant-numeric: tabular-nums; }
 .spending-table td:has(.account-dot) { white-space: nowrap; }
 .account-dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 7px; vertical-align: 1px; }
+.transaction-heading, .bank-connections { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.transaction-heading h3 { margin: 0; }
+.bank-connection { display: inline-flex; align-items: center; gap: 6px; padding: 6px 10px; border: 1px solid var(--line); border-radius: 999px; background: var(--hover); color: var(--text); font: inherit; font-size: 11px; cursor: pointer; }
+.bank-connection .account-dot { margin: 0; flex-shrink: 0; }
+.bank-connection:focus-visible { outline: 2px solid var(--violet); outline-offset: 2px; }
 .spending-table select.inferred { font-style: italic; }
 .spending-table .transaction-amount { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .spending-table .transaction-actions { width: 66px; padding-left: 26px; padding-right: 10px; }

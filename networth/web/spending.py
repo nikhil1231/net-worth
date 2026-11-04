@@ -47,7 +47,9 @@ def router(store, config, runner):
     try:
       if account and not store.conn.execute('SELECT 1 FROM lunchflow_accounts WHERE account=?', (account,)).fetchone():
         config.account(account)
-      return spending.report(store, config, month, account)
+      result = spending.report(store, config, month, account)
+      await lunchflow.check_connections(store, config, result['accounts'])
+      return result
     except (ValueError, LookupError, ConfigError) as e:
       raise HTTPException(400, str(e))
 

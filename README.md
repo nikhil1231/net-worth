@@ -213,6 +213,15 @@ IDs, overlapping partial files containing identical same-day payments can be
 ambiguous. Transaction amounts are stored as integer pence. The privacy toggle
 hides spending amounts, merchant descriptions and charts.
 
+The Transactions count is for the selected month and filters; the line below it
+also shows the account's stored history across all months. Bank pills beside the
+heading show a tick after a successful transaction sync within 24 hours. Lunch Flow
+sources are also checked against its current accessible, active account list when
+the page loads. Missing, inactive, unlinked, paused, failed or overdue sources are
+flagged with an explanation; a failed availability check is shown as unverified.
+Open a pill to manage Bank connections. Statement-only accounts have no automatic
+connection. These checks do not force a bank refresh or prove complete history.
+
 Transaction history is retained indefinitely: the 89-day sync window limits what
 Monzo can return on each routine fetch, not what this app keeps. Back up the SQLite
 database in `data/` (or the deployed data directory) to preserve history and rules.

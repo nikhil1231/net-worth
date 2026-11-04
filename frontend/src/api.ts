@@ -180,7 +180,7 @@ export type SpendingReport = {
   history: { month: string; spent: number; refunds: number; income: number }[]
   pace: { day: number; current: number | null; previous: number }[]
   transactions: SpendingTransaction[]; recurring: RecurringPayment[]
-  accounts: { name: string; type: string; sync_enabled: boolean; first_date: string | null; last_date: string | null; count: number; last_success?: string; last_error?: string; history_from?: string }[]
+  accounts: { name: string; type: string; institution: string; connection_status: string; connection_detail: string; sync_enabled: boolean; first_date: string | null; last_date: string | null; count: number; last_success?: string; last_error?: string; history_from?: string }[]
   category_options: string[]; review_count: number
 }
 export type StatementPreview = {

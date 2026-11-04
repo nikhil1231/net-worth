@@ -46,6 +46,63 @@ def configure(setup, mappings=None):
   return asyncio.run(lunchflow.configure(store, config, mappings if mappings is not None else [mapping(), mapping('2', 'American Express')]))
 
 
+def test_report_checks_remote_connections_and_keeps_month_and_history_separate(setup, monkeypatch):
+  store, config, _, records, _ = setup
+  configure(setup)
+  records[1] = [transaction(), transaction('november', date='2026-11-02')]
+  records[2] = [transaction('card', account_id=2)]
+  asyncio.run(lunchflow.sync(store, config))
+  client = TestClient(create_app(config, run_scheduler=False))
+  result = client.get('/api/spending?month=2026-11').json()
+  accounts = {a['name']: a for a in result['accounts']}
+  assert len(result['transactions']) == 1
+  assert accounts['Santander']['count'] == 2
+  assert accounts['American Express']['connection_status'] == 'connected'
+  assert accounts['American Express']['institution'] == 'American Express'
+
+  async def discover(key):
+    return [dict(id='1', status='INACTIVE', currency='GBP')]
+  monkeypatch.setattr(lunchflow, 'discover', discover)
+  result = client.get('/api/spending?month=2026-10&account=Santander').json()
+  accounts = {a['name']: a for a in result['accounts']}
+  assert accounts['Santander']['connection_status'] == 'unavailable'
+  assert 'inactive' in accounts['Santander']['connection_detail']
+  assert accounts['American Express']['connection_status'] == 'unavailable'
+  assert 'missing' in accounts['American Express']['connection_detail']
+  assert accounts['American Express']['count'] == 1
+  assert len(spending.transactions(store)) == 3
+
+
+def test_report_cannot_show_connected_when_remote_check_fails(setup, monkeypatch):
+  store, config, *_ = setup
+  configure(setup)
+  asyncio.run(lunchflow.sync(store, config))
+  async def discover(key):
+    raise lunchflow.LunchFlowError('Lunch Flow denied access.')
+  monkeypatch.setattr(lunchflow, 'discover', discover)
+  result = TestClient(create_app(config, run_scheduler=False)).get('/api/spending?month=2026-11').json()
+  account = next(a for a in result['accounts'] if a['name'] == 'Santander')
+  assert account['connection_status'] == 'unverified'
+  assert account['connection_detail'] == 'Lunch Flow denied access.'
+  assert account['last_success']
+
+
+def test_report_surfaces_paused_failed_and_stale_syncs(setup):
+  store, config, _, _, failures = setup
+  configure(setup)
+  asyncio.run(lunchflow.sync(store, config))
+  failures.add(1)
+  asyncio.run(lunchflow.sync(store, config))
+  with store.conn:
+    store.conn.execute("UPDATE spending_status SET last_success='2020-01-01T00:00:00+00:00' WHERE account='American Express'")
+  accounts = {a['name']: a for a in spending.report(store, config, '2026-11')['accounts']}
+  assert accounts['Santander']['connection_status'] == 'error'
+  assert accounts['American Express']['connection_status'] == 'stale'
+  asyncio.run(lunchflow.configure(store, config, []))
+  accounts = spending.report(store, config, '2026-11')['accounts']
+  assert all(a['connection_status'] == 'paused' for a in accounts if a['type'] == 'lunchflow')
+
+
 def test_setup_discovery_secret_storage_and_spending_only_accounts(setup):
   store, config, calls, records, _ = setup
   client = TestClient(create_app(config, run_scheduler=False))
@@ -66,7 +123,7 @@ def test_setup_discovery_secret_storage_and_spending_only_accounts(setup):
   assert len(config.accounts) == 2
   assert store.conn.execute('SELECT COUNT(*) FROM snapshots').fetchone()[0] == 0
   assert calls[-1][2] == {'x-api-key': 'secret-key'}
-  assert calls[-1][1] == {'include_pending': 'true'}
+  assert [call for call in calls if call[0].endswith('/transactions')][-1][1] == {'include_pending': 'true'}
 
 
 def test_repeated_sync_settlement_and_user_corrections(setup):

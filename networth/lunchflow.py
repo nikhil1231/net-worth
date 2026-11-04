@@ -52,6 +52,29 @@ async def discover(key):
     raise LunchFlowError('Lunch Flow returned an invalid account list.') from None
 
 
+async def check_connections(store, config, accounts):
+  """Verify linked sources are still accessible, without importing or changing history."""
+  bindings = {r['account']: dict(r) for r in store.conn.execute('SELECT * FROM lunchflow_accounts WHERE enabled=1')}
+  linked = [a for a in accounts if a['name'] in bindings]
+  if not linked:
+    return
+  try:
+    remote = {a['id']: a for a in await asyncio.wait_for(discover(api_key(config)), 10)}
+  except (LunchFlowError, asyncio.TimeoutError) as exc:
+    detail = str(exc) if isinstance(exc, LunchFlowError) else 'Lunch Flow connection check timed out. Try again.'
+    for a in linked:
+      a.update(connection_status='unverified', connection_detail=detail)
+    return
+  for a in linked:
+    source = remote.get(bindings[a['name']]['id'])
+    if not source:
+      a.update(connection_status='unavailable', connection_detail='Account is missing from Lunch Flow. Check the bank connection and API destination Account Access settings.')
+    elif source['status'] != 'ACTIVE':
+      a.update(connection_status='unavailable', connection_detail='Lunch Flow reports this bank account as inactive. Reconnect it in Lunch Flow, then retry.')
+    elif source['currency'] not in ('', 'GBP'):
+      a.update(connection_status='unavailable', connection_detail='This source no longer provides GBP transactions.')
+
+
 def state(store, config):
   bindings = [dict(r) for r in store.conn.execute('SELECT * FROM lunchflow_accounts ORDER BY account')]
   choices = []

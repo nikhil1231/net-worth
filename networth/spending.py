@@ -265,15 +265,32 @@ def report(store, config, month, account=None):
     pace.append(dict(day=day, current=current_total/100 if day<=current_days else None, previous=previous_total/100))
   statuses = {r['account']: dict(r) for r in store.conn.execute('SELECT * FROM spending_status')}
   accounts = []
-  names = [a.name for a in config.accounts if a.category == 'cash' or a.name in lunchflow or any(r['account']==a.name for r in all_rows)]
+  names = [a.name for a in config.accounts if a.category in ('cash', 'liabilities') or a.name in lunchflow or any(r['account']==a.name for r in all_rows)]
   names += [name for name in lunchflow if name not in names]
   for name in names:
     dates = [r['date'] for r in all_rows if r['account']==name]
     kind = 'lunchflow' if name in lunchflow else config.account(name).type
     accounts.append(dict(name=name, type=kind, first_date=min(dates) if dates else None,
                          last_date=max(dates) if dates else None, count=len(dates),
+                         institution=lunchflow[name]['institution'] if name in lunchflow else '',
                          sync_enabled=bool(lunchflow[name]['enabled']) if name in lunchflow else kind == 'monzo',
                          **{k:v for k,v in statuses.get(name,{}).items() if k!='account'}))
+    a = accounts[-1]
+    if name in lunchflow and not a['sync_enabled']:
+      status, detail = 'paused', 'Transaction sync is paused. Open Bank connections to enable it.'
+    elif kind == 'lunchflow' and name not in lunchflow:
+      status, detail = 'unlinked', 'No transaction source linked. Select this account in Bank connections, then sync.'
+    elif kind not in ('monzo', 'lunchflow'):
+      status, detail = 'manual', 'Statement imports only; there is no automatic bank connection.'
+    elif a.get('last_error'):
+      status, detail = 'error', a['last_error']
+    elif not a.get('last_success'):
+      status, detail = 'pending', 'No successful transaction sync yet. Press sync to import history.'
+    elif datetime.fromisoformat(now()) - datetime.fromisoformat(a['last_success']) > timedelta(hours=24):
+      status, detail = 'stale', 'No successful transaction sync in the last 24 hours. Press sync to check the connection.'
+    else:
+      status, detail = 'connected', 'Last transaction sync succeeded. This does not guarantee complete bank history.'
+    a.update(connection_status=status, connection_detail=detail)
   return dict(month=month, summary=summary, categories=categories, history=history, pace=pace,
               transactions=selected, recurring=recurring_rows, accounts=accounts, category_options=CATEGORIES,
               review_count=sum(r['category']=='Uncategorised' or r['possible_transfer'] for r in selected))
