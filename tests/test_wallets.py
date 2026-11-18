@@ -1,5 +1,5 @@
 import asyncio
-import sqlite3
+import os
 from networth.config import AccountConfig, Config
 from networth.models import Holding
 from networth.store import Store, SnapshotRow, now
@@ -8,12 +8,8 @@ from networth.connectors.evm import EvmWallet, RpcReader
 from networth.connectors.solana import SolanaWallet, TOKEN_PROGRAMS
 
 
-def test_legacy_migration_and_wallet_attribution(tmp_path):
-  path = tmp_path / 'test.db'
-  conn = sqlite3.connect(path)
-  conn.execute("CREATE TABLE snapshots (run_id INTEGER, account TEXT, category TEXT, asset TEXT, name TEXT, quantity REAL, native_value REAL, native_currency TEXT, price_gbp REAL, value_gbp REAL, fetched_at TEXT)")
-  conn.commit(); conn.close()
-  store = Store(path)
+def test_wallet_attribution(tmp_path):
+  store = Store(os.environ['DATABASE_URL'])
   config = Config([AccountConfig('EVM wallets', 'evm', 'crypto', 15, {'addresses': ['a', 'b']})], data_dir=tmp_path)
   ts = now()
   store.write_run(ts, [SnapshotRow('EVM wallets', 'crypto', Holding('ETH', 3), 10, 30, ts)])
@@ -65,7 +61,7 @@ def test_solana_token_programs_stay_with_owner(monkeypatch, tmp_path):
 def test_wallet_detail_separates_usdc_owners_and_preserves_token_links(tmp_path):
   addresses = ['wallet-4DD', 'wallet-9F3']
   config = Config([AccountConfig('EVM', 'evm', 'crypto', 15, {'addresses': addresses})], data_dir=tmp_path)
-  store = Store(config.db_path)
+  store = Store(config.db_url)
   ts = now()
   holdings = [
     Holding('USDC', 415.110072, wallet=addresses[0], chain='Ethereum'),

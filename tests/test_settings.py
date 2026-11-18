@@ -99,7 +99,7 @@ def test_edit_keeps_masked_secret_and_untouched_lines(env):
 
 def test_rename_moves_history(env):
   path, config, client = env
-  store = Store(config.db_path)
+  store = Store(config.db_url)
   store.write_run('2026-01-01T00:00:00+00:00', [
     SnapshotRow('BTC cold wallet', 'crypto', Holding('BTC', 1), 50_000, 50_000, '2026-01-01T00:00:00+00:00')])
   store.record_attempt('BTC cold wallet', '2026-01-01T00:00:00+00:00')

@@ -101,7 +101,7 @@ Open **Advisor** (`/advisor`) for a weekly, evidence-backed review. The overview
 the latest findings. Reviews run on the server, including while the browser is closed; default
 is Monday at 09:00 Europe/London. Daily and manual-only schedules are available. **Run a review**
 does not move the scheduled slot. The database holds settings, the queue, inputs, reports,
-evidence snapshots, feedback and provider-reported usage/cost. Back these up with `networth.db`.
+evidence snapshots, feedback and provider-reported usage/cost. They are in the Postgres database (`DATABASE_URL`), which is backed up with it.
 No new service or external scheduler is required.
 
 The first version checks existing recorded data; it does not fetch financial news. Calculated
@@ -269,7 +269,7 @@ saving pauses its sync while retaining imported transactions and rules.
 
 The API key is read server-side from `LUNCHFLOW_API_KEY` in `.env` (or the process
 environment). It is never entered in or returned to the browser. Changes to `.env`
-are picked up on the next API request. Keep `.env` private and back up `networth.db`
+are picked up on the next API request. Keep `.env` private and back up the Postgres database
 to preserve transaction history and account mappings. The integration uses the
 [Lunch Flow Personal API](https://www.lunchflow.app/docs/api/personal-api-overview).
 

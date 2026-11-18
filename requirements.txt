@@ -2,6 +2,8 @@ beautifulsoup4==4.15.0
 ccxt==4.5.85
 fastapi==0.142.2
 python-dotenv==1.2.4
+psycopg[binary]==3.3.9
+psycopg-pool==3.3.3
 pyyaml==6.0.3
 requests==2.34.2
 ruamel.yaml==0.19.1

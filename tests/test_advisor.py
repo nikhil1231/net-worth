@@ -24,7 +24,7 @@ def setup(tmp_path, monkeypatch):
     AccountConfig('ISA', 'hl', 'investments', 60),
     AccountConfig('Wallet', 'solana', 'crypto', 60),
   ], data_dir=tmp_path)
-  store = Store(config.db_path)
+  store = Store(config.db_url)
   advisor.initial(store)
   yield config, store
   store.conn.close()
@@ -168,7 +168,7 @@ def test_schedule_manual_run_dst_and_settings_persistence(setup):
 
 def test_concurrent_enqueue_is_deduplicated(setup):
   config, store = setup
-  others = [Store(config.db_path) for _ in range(2)]
+  others = [Store(config.db_url) for _ in range(2)]
   with ThreadPoolExecutor(2) as pool:
     ids = list(pool.map(lambda s: advisor.queue(s, now=NOW)['id'], others))
   assert ids[0] == ids[1]

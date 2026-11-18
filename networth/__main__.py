@@ -34,7 +34,7 @@ def main():
   config = load_config(args.config)
 
   if args.command == 'run':
-    store = Store(config.db_path)
+    store = Store(config.db_url)
     asyncio.run(Runner(config, store).run(force=args.force))
     print_summary(reports.summary(store, config))
   elif args.command == 'check':

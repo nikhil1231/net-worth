@@ -21,9 +21,9 @@ SCHEMA = '''
 CREATE TABLE IF NOT EXISTS transactions (
   id TEXT PRIMARY KEY, account TEXT NOT NULL, bank_account TEXT NOT NULL,
   date TEXT NOT NULL, merchant TEXT NOT NULL, description TEXT NOT NULL,
-  amount INTEGER NOT NULL, category TEXT NOT NULL, kind TEXT NOT NULL,
-  pending INTEGER NOT NULL DEFAULT 0, source TEXT NOT NULL,
-  category_override TEXT, kind_override TEXT
+  amount BIGINT NOT NULL, category TEXT NOT NULL, kind TEXT NOT NULL,
+  pending BIGINT NOT NULL DEFAULT 0, source TEXT NOT NULL,
+  category_override TEXT, kind_override TEXT, time TEXT, label TEXT
 );
 CREATE INDEX IF NOT EXISTS transactions_date ON transactions(date);
 CREATE TABLE IF NOT EXISTS spending_rules (
@@ -32,7 +32,7 @@ CREATE TABLE IF NOT EXISTS spending_rules (
 );
 CREATE TABLE IF NOT EXISTS monthly_spending_rules (
   account TEXT NOT NULL, bank_account TEXT NOT NULL, merchant TEXT NOT NULL,
-  recurring_type TEXT NOT NULL,
+  recurring_type TEXT NOT NULL, description_contains TEXT NOT NULL DEFAULT '',
   PRIMARY KEY(account, bank_account, merchant)
 );
 CREATE TABLE IF NOT EXISTS recurring_payments (
@@ -44,34 +44,14 @@ CREATE TABLE IF NOT EXISTS spending_status (
 );
 CREATE TABLE IF NOT EXISTS lunchflow_accounts (
   id TEXT PRIMARY KEY, account TEXT NOT NULL, institution TEXT NOT NULL,
-  start_date TEXT, enabled INTEGER NOT NULL DEFAULT 1, bank_account TEXT NOT NULL DEFAULT ''
+  start_date TEXT, enabled BIGINT NOT NULL DEFAULT 1, bank_account TEXT NOT NULL DEFAULT ''
 );
 '''
 
 
 def initialise(store):
-  store.conn.executescript(SCHEMA)
-  columns = {r['name'] for r in store.conn.execute('PRAGMA table_info(monthly_spending_rules)')}
-  if 'description_contains' not in columns:
-    store.conn.execute("ALTER TABLE monthly_spending_rules ADD COLUMN description_contains TEXT NOT NULL DEFAULT ''")
-  transaction_columns = {r['name'] for r in store.conn.execute('PRAGMA table_info(transactions)')}
-  if 'time' not in transaction_columns:
-    store.conn.execute('ALTER TABLE transactions ADD COLUMN time TEXT')
-  if 'label' not in transaction_columns:
-    store.conn.execute('ALTER TABLE transactions ADD COLUMN label TEXT')
-  if 'bank_account' not in {r['name'] for r in store.conn.execute('PRAGMA table_info(lunchflow_accounts)')}:
-    store.conn.execute("ALTER TABLE lunchflow_accounts ADD COLUMN bank_account TEXT NOT NULL DEFAULT ''")
-  table_sql = store.conn.execute("SELECT sql FROM sqlite_master WHERE name='lunchflow_accounts'").fetchone()[0]
-  if 'UNIQUE' in table_sql:
-    # Several Lunch Flow sources (e.g. two Amex cards) can feed one app account.
-    store.conn.executescript('''
-      ALTER TABLE lunchflow_accounts RENAME TO lunchflow_accounts_old;
-      CREATE TABLE lunchflow_accounts (
-        id TEXT PRIMARY KEY, account TEXT NOT NULL, institution TEXT NOT NULL,
-        start_date TEXT, enabled INTEGER NOT NULL DEFAULT 1, bank_account TEXT NOT NULL DEFAULT '');
-      INSERT INTO lunchflow_accounts SELECT id, account, institution, start_date, enabled, bank_account FROM lunchflow_accounts_old;
-      DROP TABLE lunchflow_accounts_old;''')
-  store.conn.commit()
+  from networth.store import create
+  create(store.conn, SCHEMA)
 
 
 def merchant_key(value):

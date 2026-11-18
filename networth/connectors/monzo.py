@@ -208,7 +208,7 @@ class Monzo(Connector):
     from networth.store import Store
     from networth.spending import sync_monzo
     config = Config([self.account], data_dir=self.data_dir)
-    store = Store(config.db_path)
+    store = Store(config.db_url)
     try:
       result = await sync_monzo(store, config, full_history=True)
       print('Transaction history:', result[0]['error'] or f"{result[0]['count']} transactions saved")

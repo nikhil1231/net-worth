@@ -34,7 +34,13 @@ class Config:
 
   @property
   def db_path(self) -> Path:
+    """Where the old SQLite file was; lock files are still kept next to it."""
     return self.data_dir / 'networth.db'
+
+  @property
+  def db_url(self) -> str:
+    """The Postgres database (DATABASE_URL)."""
+    return os.environ['DATABASE_URL']
 
   def account(self, name: str) -> AccountConfig:
     for account in self.accounts:

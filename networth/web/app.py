@@ -31,7 +31,7 @@ async def schedule(runner: Runner):
 
 
 def create_app(config: Config, run_scheduler: bool = True) -> FastAPI:
-  store = Store(config.db_path)
+  store = Store(config.db_url)
   runner = Runner(config, store)
   advisor.initial(store)
   advisor_worker = advisor.Worker(store, config)

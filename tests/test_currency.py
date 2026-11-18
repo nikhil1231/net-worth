@@ -19,7 +19,7 @@ def test_fx_is_cached_and_does_not_rewrite_snapshots(monkeypatch, tmp_path):
   assert first.json()['rates'] == {'GBP': 1.0, 'USD': 1.25, 'EUR': 1.1}
   assert client.get('/api/fx').json() == first.json()
   assert len(calls) == 1
-  assert Store(config.db_path).latest_run() is None
+  assert Store(config.db_url).latest_run() is None
 
 
 def test_invalid_fx_does_not_return_a_fabricated_conversion(monkeypatch, tmp_path):

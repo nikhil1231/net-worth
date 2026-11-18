@@ -14,7 +14,7 @@ def setup(tmp_path, monkeypatch):
   monkeypatch.delenv('LUNCHFLOW_API_KEY', raising=False)
   config = Config([AccountConfig('Santander', 'manual', 'cash', 15),
                    AccountConfig('Monzo', 'monzo', 'cash', 15)], data_dir=tmp_path)
-  store = Store(config.db_path)
+  store = Store(config.db_url)
   calls, records, failures = [], {}, set()
   async def get(url, params=None, headers=None):
     calls.append((url, params, headers))

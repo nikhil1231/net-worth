@@ -38,7 +38,7 @@ def setup(tmp_path, monkeypatch):
 
   def make(*accounts):
     config = Config(list(accounts), data_dir=tmp_path)
-    store = Store(config.db_path)
+    store = Store(config.db_url)
     return config, store, Runner(config, store)
   return make
 

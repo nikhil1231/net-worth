@@ -1,3 +1,4 @@
+import os
 import asyncio
 from datetime import datetime, timedelta, timezone
 
@@ -155,7 +156,7 @@ def test_classify_holdings_caches_and_isolates_failures(tmp_path, monkeypatch):
     return {'kind': 'stock', 'name': name, 'symbol': asset, 'countries': {'United States': 1.0},
             'sectors': {'Financials': 1.0}, 'source': 'yahoo', 'price_gbp': 1.0}
   monkeypatch.setattr(classify, 'classify', fake_classify)
-  store = Store(tmp_path / 'db.sqlite')
+  store = Store(os.environ['DATABASE_URL'])
 
   result = asyncio.run(classify.classify_holdings(store, [('MSTR', 'Strategy'), ('BAD', None)], {}))
   assert result['MSTR']['countries'] == {'United States': 1.0}
@@ -187,7 +188,7 @@ def client(tmp_path, monkeypatch):
     AccountConfig('ISA', 'manual', 'investments', 15, {'look_through': {'EMIM': {'ishares': 1}}}),
     AccountConfig('Bank', 'manual', 'cash', 15, {}),
   ], data_dir=tmp_path)
-  store = Store(config.db_path)
+  store = Store(config.db_url)
   store.write_run('2026-10-01T00:00:00+00:00', [
     SnapshotRow('ISA', 'investments', Holding('EMIM', 10, 400, 'GBP', 'iShares plc'), 40, 400, '2026-10-01T00:00:00+00:00'),
     SnapshotRow('Bank', 'cash', Holding('GBP', 100), 1, 100, '2026-10-01T00:00:00+00:00'),

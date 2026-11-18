@@ -14,7 +14,7 @@ from networth.web.app import create_app
 @pytest.fixture
 def setup(tmp_path):
   config = Config([AccountConfig('Monzo','monzo','cash',15), AccountConfig('Santander','manual','cash',15)], data_dir=tmp_path)
-  store = Store(config.db_path)
+  store = Store(config.db_url)
   yield store, config
   store.conn.close()
 

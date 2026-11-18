@@ -30,7 +30,7 @@ def test_drift_claim_subtracts_claimed_and_is_excluded_from_total(tmp_path):
   assert PriceBook({'USD': 1}).value(holding) == (None, None)
   config = Config([AccountConfig('Drift', 'drift_recovery', 'crypto', 15,
                     {'note': 'Unclaimed recovery', 'coverage': 'unpriced'})], data_dir=tmp_path)
-  store = Store(config.db_path)
+  store = Store(config.db_url)
   store.write_run(now(), [SnapshotRow('Drift', 'crypto', holding, None, None, now()),
                          SnapshotRow('Drift', 'crypto', Holding('EMPTY', 0), None, None, now())])
   result = reports.summary(store, config)
@@ -59,7 +59,7 @@ def test_failed_quote_leaves_token_unpriced_instead_of_failing(monkeypatch):
 
 def test_chain_details_keep_protocol_value_and_unpriced_claim_without_extra_accounts(tmp_path):
   config = Config([AccountConfig('Wallets', 'evm', 'crypto', 15)], data_dir=tmp_path)
-  store = Store(config.db_path)
+  store = Store(config.db_url)
   ts = now()
   holdings = [
     Holding('USDC', 1, name='Base', wallet='owner', chain='Base'),
@@ -92,7 +92,7 @@ def test_protocol_sources_inherit_wallet_account_and_keep_chain(monkeypatch, tmp
 
 def test_wallet_price_uses_combined_contract_values_not_first_empty_slot(tmp_path):
   config = Config([AccountConfig('SOL', 'solana', 'crypto', 15)], data_dir=tmp_path)
-  store = Store(config.db_path)
+  store = Store(config.db_url)
   ts = now()
   store.write_run(ts, [
     SnapshotRow('SOL', 'crypto', Holding('JUP', 0), 0.00001, 0, ts),
