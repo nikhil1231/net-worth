@@ -1,6 +1,7 @@
 import pytest
 
 from networth.config import AccountConfig, ConfigError
+from networth.connectors import hl as hl_module
 from networth.connectors.hl import HargreavesLansdown, _find_hl_vt, parse_cash, parse_holdings
 
 SUMMARY_HTML = '''
@@ -103,3 +104,46 @@ def test_login_step_two_rejects_unquoted_secure_number(tmp_path):
 def test_login_step_two_without_prompts(tmp_path):
   with pytest.raises(RuntimeError, match='secure number prompts not found'):
     _hl(tmp_path, '012345')._login_step_two(FakeSession(), '<input name="hl_vt" value="t">')
+
+
+def test_login_drops_expired_cookies(tmp_path, monkeypatch):
+  hl = _hl(tmp_path, '012345')
+  hl._save_cookies(type('S', (), {'cookies': type('C', (), {'get_dict': lambda self: {'HLWEBsession': 'dead'}})()})())
+  seen = []
+
+  def fake_step_one(session):
+    seen.append(session.cookies.get_dict())
+    return STEP_TWO_HTML
+
+  monkeypatch.setattr(hl_module, 'is_authed', lambda session: bool(seen))  # logged out until we log in
+  monkeypatch.setattr(hl, '_login_step_one', fake_step_one)
+  monkeypatch.setattr(hl, '_login_step_two', lambda session, html: None)
+  hl._login()
+  assert seen == [{}]
+
+
+class FakeResponse:
+  def __init__(self, body):
+    self.body = body
+
+  def json(self):
+    return self.body
+
+
+class FakeGetSession:
+  def __init__(self, body):
+    self.body = body
+
+  def get(self, url, **kwargs):
+    return FakeResponse(self.body)
+
+
+@pytest.mark.parametrize('body, authed', [
+  (1234567, True),                  # logged in: a bare client id
+  ({'client_id': 1234567}, True),   # older response shape
+  (False, False),                   # logged out
+  ({'client_id': False}, False),
+  (None, False),
+])
+def test_is_authed(body, authed):
+  assert hl_module.is_authed(FakeGetSession(body)) is authed

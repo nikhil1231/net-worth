@@ -80,8 +80,12 @@ class HargreavesLansdown(Connector):
 
   def _login(self):
     session = HLSession()
-    if self._load_cookies(session) and is_authed(session):
-      return session
+    if self._load_cookies(session):
+      if is_authed(session):
+        return session
+      # An expired session cookie makes HL redirect the login page to /my-accounts (no form, so
+      # no hl_vt token), so log in from a clean session instead of on top of the dead one.
+      session = HLSession()
 
     step_one_html = self._login_step_one(session)
     res = self._login_step_two(session, step_one_html)
@@ -156,10 +160,13 @@ def is_authed(session):
     res = session.get(f'{BASE_URL}/ajaxx/user.php?method=getPersonalDetails&field=client_id&format=json',
                       headers=HEADERS, timeout=TIMEOUT)
     data = res.json()
-    # HL returns a bare `false` (not an object) when the session isn't logged in
-    return isinstance(data, dict) and data.get('client_id') not in (None, False)
   except (ValueError, requests.RequestException):
     return False
+  # Logged in, HL returns the client id - a bare number, or an object with `client_id` in older
+  # responses. Logged out, it returns a bare `false`.
+  if isinstance(data, dict):
+    data = data.get('client_id')
+  return bool(data)
 
 
 def parse_holdings(html):
