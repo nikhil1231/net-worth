@@ -1,6 +1,7 @@
 import asyncio
 import json
 import re
+from urllib.parse import unquote, urljoin
 
 import requests
 from bs4 import BeautifulSoup
@@ -21,6 +22,25 @@ HEADERS = {
 
 FORM_HEADERS = HEADERS | {'Content-Type': 'application/x-www-form-urlencoded'}
 TIMEOUT = 30
+
+
+_QUEUE_NEXT = re.compile(r"decodeURIComponent\('([^']+)'\)")
+
+
+class HLSession(requests.Session):
+  """HL fronts its site with a Queue-it waiting room. Browsers get through it with a bit of
+  JavaScript that redirects to the next URL; do the same here so requests land on the real page."""
+
+  def request(self, method, url, **kwargs):
+    res = super().request(method, url, **kwargs)
+    for _ in range(5):
+      if 'queue.hl.co.uk' not in res.url:
+        break
+      match = _QUEUE_NEXT.search(res.text)
+      if not match:
+        raise RuntimeError('HL is showing its waiting room (queue) and it could not be passed - try again later')
+      res = super().request('GET', urljoin(res.url, unquote(match.group(1))), **kwargs)
+    return res
 
 
 @connector('hl')
@@ -59,14 +79,14 @@ class HargreavesLansdown(Connector):
     return holdings
 
   def _login(self):
-    session = requests.Session()
+    session = HLSession()
     if self._load_cookies(session) and is_authed(session):
       return session
 
     step_one_html = self._login_step_one(session)
-    self._login_step_two(session, step_one_html)
+    res = self._login_step_two(session, step_one_html)
     if not is_authed(session):
-      raise RuntimeError('HL login failed')
+      raise RuntimeError(f'HL login failed: {_describe(res)}')
 
     self._save_cookies(session)
     return session
@@ -106,7 +126,7 @@ class HargreavesLansdown(Connector):
     for i, idx in enumerate(digit_indices):
       data[f'secure-number[{i+1}]'] = secure_number[idx-1]
 
-    session.post(f'{BASE_URL}/my-accounts/login-step-two', headers=FORM_HEADERS, data=data, timeout=TIMEOUT)
+    return session.post(f'{BASE_URL}/my-accounts/login-step-two', headers=FORM_HEADERS, data=data, timeout=TIMEOUT)
 
   def _load_cookies(self, session):
     path = self.state_file('cookies.json')
@@ -122,12 +142,23 @@ class HargreavesLansdown(Connector):
     path.chmod(0o600)
 
 
+def _describe(res):
+  """Where a login attempt ended up, so a failure says why (never includes form data)."""
+  soup = BeautifulSoup(res.text, 'html.parser')
+  heading = soup.find(['h1', 'h2']) or soup.find('title')
+  alerts = [a.get_text(' ', strip=True) for a in soup.select('.alert, .error, .error-message, [role=alert]')]
+  text = ' | '.join(filter(None, [heading.get_text(' ', strip=True) if heading else '', *alerts[:2]]))
+  return f'HTTP {res.status_code} at {res.url.split("?")[0]} - {text[:200] or "no message on page"}'
+
+
 def is_authed(session):
   try:
     res = session.get(f'{BASE_URL}/ajaxx/user.php?method=getPersonalDetails&field=client_id&format=json',
                       headers=HEADERS, timeout=TIMEOUT)
-    return res.json()['client_id'] != False  # noqa: E712 - HL returns false or an id
-  except (ValueError, KeyError, requests.RequestException):
+    data = res.json()
+    # HL returns a bare `false` (not an object) when the session isn't logged in
+    return isinstance(data, dict) and data.get('client_id') not in (None, False)
+  except (ValueError, requests.RequestException):
     return False
 
 
