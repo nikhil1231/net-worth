@@ -2,7 +2,7 @@
 settings:
   tick_minutes: 15        # how often the scheduler wakes up and re-prices everything
   default_interval: 15    # minutes between fetches for accounts without their own `interval`
-  # data_dir: data        # SQLite DB, cookies and OAuth tokens
+  # data_dir: data        # cookies and OAuth tokens
 
 # Each account: name (unique, shown on the dashboard), type (connector), category
 # (any label - used to group the dashboard), optional interval (minutes), params.

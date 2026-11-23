@@ -1,4 +1,4 @@
-# Dashboard + scheduler on one port. Mount accounts.yaml, the secrets env file and /app/data (SQLite, cookies, OAuth tokens).
+# Dashboard + scheduler on one port. Needs DATABASE_URL (Postgres); mount accounts.yaml, an env file and /app/data (cookies, OAuth tokens).
 FROM node:22-slim AS frontend
 WORKDIR /frontend
 COPY frontend/package.json frontend/package-lock.json ./

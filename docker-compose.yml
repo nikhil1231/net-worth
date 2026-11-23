@@ -1,0 +1,22 @@
+services:
+  networth:
+    build: .
+    ports: ['8000:8000']
+    environment:
+      DATABASE_URL: postgresql://networth:networth@db/networth
+    env_file: [{path: .env, required: false}]   # API keys referenced from accounts.yaml
+    volumes:
+      - ./accounts.yaml:/app/accounts.yaml
+      - ./data:/app/data                        # cookies and OAuth tokens
+    depends_on: [db]
+
+  db:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: networth
+      POSTGRES_PASSWORD: networth
+      POSTGRES_DB: networth
+    volumes: [pgdata:/var/lib/postgresql/data]
+
+volumes:
+  pgdata:
