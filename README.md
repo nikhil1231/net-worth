@@ -90,7 +90,8 @@ For frontend work run `serve`, then `npm run dev` in `frontend/` (hot reload on 
 TEST_DATABASE_URL=postgresql://postgres:pw@localhost/postgres .venv/bin/python -m pytest
 ```
 
-Each test gets its own throwaway database, so the role needs `CREATEDB`.
+Each test gets its own throwaway database, so the role needs `CREATEDB`. Frontend: `npm run typecheck`
+and `node --test tests/currency.test.mjs` in `frontend/`.
 
 ## Adding a connector
 

@@ -1,5 +1,5 @@
 """Every test gets its own empty Postgres database as DATABASE_URL (from TEST_DATABASE_URL, a role that may
-create databases: the shared server's `tester`), dropped afterwards."""
+create databases), dropped afterwards."""
 import os
 
 import pytest

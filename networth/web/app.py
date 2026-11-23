@@ -47,7 +47,7 @@ def create_app(config: Config, run_scheduler: bool = True) -> FastAPI:
       if tasks:
         await asyncio.gather(*tasks, return_exceptions=True)
 
-  # Handlers are async so all SQLite access happens on the event loop thread.
+  # Handlers are async so all database access happens on the event loop thread.
   app = FastAPI(title='Net worth', lifespan=lifespan)
 
   from networth.web.spending import router as spending_router

@@ -69,7 +69,7 @@ def create(conn, schema: str):
 
 
 class Store:
-  """Everything in Postgres (DATABASE_URL), moved from SQLite on 2026-11-18. One connection for the
+  """Everything in Postgres (DATABASE_URL). One connection for the
   process, shared between threads, with sqlite3's transaction behaviour (sqlpg.SharedConnection)."""
   def __init__(self, url: str):
     self.conn = sqlpg.SharedConnection(url)
@@ -144,9 +144,6 @@ class Store:
 
   def run_at_or_before(self, ts: str) -> Optional[sqlpg.Row]:
     return self.conn.execute('SELECT * FROM runs WHERE ts <= ? ORDER BY ts DESC LIMIT 1', (ts,)).fetchone()
-
-  def first_run(self) -> Optional[sqlpg.Row]:
-    return self.conn.execute('SELECT * FROM runs ORDER BY id LIMIT 1').fetchone()
 
   def snapshots(self, run_id: int) -> list[sqlpg.Row]:
     return self.conn.execute('SELECT * FROM snapshots WHERE run_id = ?', (run_id,)).fetchall()

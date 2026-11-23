@@ -52,6 +52,24 @@ async def discover(key):
     raise LunchFlowError('Lunch Flow returned an invalid account list.') from None
 
 
+ACCOUNT_CATEGORIES = ('cash', 'liabilities')
+
+
+def last_csv_date(store, name):
+  return store.conn.execute("SELECT MAX(date) FROM transactions WHERE account=? AND source='csv'", (name,)).fetchone()[0]
+
+
+def csv_start(store, name):
+  """The day after the last statement import, where a Lunch Flow import should begin."""
+  last = last_csv_date(store, name)
+  return (date.fromisoformat(last) + timedelta(days=1)).isoformat() if last else None
+
+
+def csv_bank_account(store, name):
+  row = store.conn.execute("SELECT bank_account FROM transactions WHERE account=? AND source='csv' LIMIT 1", (name,)).fetchone()
+  return row['bank_account'] if row else None
+
+
 def config_ids(account):
   """The Lunch Flow account IDs accounts.yaml assigns to an app account (account_id or account_ids)."""
   ids = account.params.get('account_ids') or ([account.params['account_id']] if account.params.get('account_id') else [])
@@ -64,7 +82,7 @@ def auto_link(store, config):
   existing = {r['id']: dict(r) for r in store.conn.execute('SELECT * FROM lunchflow_accounts')}
   with store.conn:
     for a in config.accounts:
-      if a.type != 'lunchflow' or a.error or a.category not in ('cash', 'liabilities'):
+      if a.type != 'lunchflow' or a.error or a.category not in ACCOUNT_CATEGORIES:
         continue
       ids = config_ids(a)
       for remote_id in ids:
@@ -73,15 +91,13 @@ def auto_link(store, config):
           if row['account'] != a.name:  # moved to another account in accounts.yaml
             store.conn.execute('UPDATE lunchflow_accounts SET account=? WHERE id=?', (a.name, remote_id))
           continue
-        last_csv = store.conn.execute("SELECT MAX(date) FROM transactions WHERE account=? AND source='csv'", (a.name,)).fetchone()[0]
-        start = (date.fromisoformat(last_csv) + timedelta(days=1)).isoformat() if last_csv else None
-        previous = store.conn.execute("SELECT bank_account FROM transactions WHERE account=? AND source='csv' LIMIT 1", (a.name,)).fetchone()
+        previous = csv_bank_account(store, a.name)
         # Share a statement-import bank identity only when one source feeds the account; with several
         # cards each keeps its own, so one card's sync never touches another's pending rows.
-        bank_account = previous['bank_account'] if previous and len(ids) == 1 else 'lunchflow:' + remote_id
+        bank_account = previous if previous and len(ids) == 1 else 'lunchflow:' + remote_id
         store.conn.execute(
           'INSERT INTO lunchflow_accounts(id,account,institution,start_date,bank_account) VALUES (?,?,?,?,?)',
-          (remote_id, a.name, '', start, bank_account))
+          (remote_id, a.name, '', csv_start(store, a.name), bank_account))
 
 
 async def check_connections(store, config, accounts):
@@ -122,10 +138,9 @@ def state(store, config):
   bindings = [dict(r) for r in store.conn.execute('SELECT * FROM lunchflow_accounts ORDER BY account')]
   choices = []
   for a in config.accounts:
-    if a.type == 'monzo' or a.category not in ('cash', 'liabilities'):
+    if a.type == 'monzo' or a.category not in ACCOUNT_CATEGORIES:
       continue
-    last_csv = store.conn.execute("SELECT MAX(date) FROM transactions WHERE account=? AND source='csv'", (a.name,)).fetchone()[0]
-    choices.append(dict(name=a.name, start_date=(date.fromisoformat(last_csv) + timedelta(days=1)).isoformat() if last_csv else ''))
+    choices.append(dict(name=a.name, start_date=csv_start(store, a.name) or ''))
   return dict(configured=bool(api_key(config)), bindings=bindings, choices=choices)
 
 
@@ -146,7 +161,7 @@ async def configure(store, config, mappings):
     local = next((a for a in config.accounts if a.name == name), None)
     if any(a.name.casefold() == name.casefold() and a.name != name for a in config.accounts):
       raise LunchFlowError('Use the exact existing app account name to link it.')
-    if local and (local.type == 'monzo' or local.category not in ('cash', 'liabilities')):
+    if local and (local.type == 'monzo' or local.category not in ACCOUNT_CATEGORIES):
       raise LunchFlowError('Link a cash or credit-card account without automatic Monzo syncing.')
     start = mapping.get('start_date') or None
     if start:
@@ -156,12 +171,12 @@ async def configure(store, config, mappings):
         raise LunchFlowError('Start date must be YYYY-MM-DD.') from None
     if remote_id in old and old[remote_id]['account'] != name:
       raise LunchFlowError('Keep the saved account name; rename linked accounts through Settings.')
-    last_csv = store.conn.execute("SELECT MAX(date) FROM transactions WHERE account=? AND source='csv'", (name,)).fetchone()[0]
+    last_csv = last_csv_date(store, name)
     if last_csv and (not start or start <= last_csv):
       raise LunchFlowError(f'{name} has statement imports through {last_csv}. Choose a later start date to avoid duplicates.')
-    previous = store.conn.execute("SELECT bank_account FROM transactions WHERE account=? AND source='csv' LIMIT 1", (name,)).fetchone()
+    previous = csv_bank_account(store, name)
     shared = sum(m['account'].strip() == name for m in mappings) > 1
-    bank_account = old.get(remote_id, {}).get('bank_account') or (previous['bank_account'] if previous and not shared else 'lunchflow:' + remote_id)
+    bank_account = old.get(remote_id, {}).get('bank_account') or (previous if previous and not shared else 'lunchflow:' + remote_id)
     validated.append((remote_id, name, accounts[remote_id]['institution'], start, bank_account))
   with store.conn:
     store.conn.execute('UPDATE lunchflow_accounts SET enabled=0')
@@ -216,10 +231,6 @@ def normalise(raw_rows, binding):
 
 
 _sync_lock = asyncio.Lock()
-
-
-def syncing():
-  return _sync_lock.locked()
 
 
 async def sync(store, config, due_only=False):

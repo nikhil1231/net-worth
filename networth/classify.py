@@ -12,7 +12,7 @@ holdings, with country weights from justETF (by ISIN - found on the LSE for Lond
     DMGI: {yahoo: DMGI.V}                             # only needed when auto-detection picks wrong
     VWRP: {justetf: IE00BK5BQT80}                     # the ISIN, for a fund not listed in London
 
-Results are cached in SQLite (a week, failures a day) - Yahoo and the issuer files are slow.
+Results are cached in Postgres (a week, failures a day) - Yahoo and the issuer files are slow.
 """
 import asyncio
 import csv
@@ -486,7 +486,7 @@ async def classify_holdings(store: Store, holdings: list[tuple[str, Optional[str
     return asset, data | {'hint': hint, 'fetched_at': now(), 'version': CACHE_VERSION}
 
   for asset, data in await asyncio.gather(*[refresh(*s) for s in stale]):
-    store.set_classification(asset, data)  # on the event loop thread, like all SQLite access
+    store.set_classification(asset, data)  # on the event loop thread, like all database access
     results[asset] = data
   return results
 
