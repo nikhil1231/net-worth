@@ -105,7 +105,7 @@ def test_only_due_accounts_are_fetched(setup):
 
   # pretend the first run was 20 minutes ago
   earlier = (datetime.now(timezone.utc) - timedelta(minutes=20)).isoformat(timespec='seconds')
-  store.conn.execute('UPDATE account_status SET last_attempt = ?', (earlier,))
+  store.conn.execute('UPDATE account_status SET last_attempt = %s', (earlier,))
   calls.clear()
   asyncio.run(runner.run())
 

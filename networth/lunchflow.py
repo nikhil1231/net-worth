@@ -56,7 +56,7 @@ ACCOUNT_CATEGORIES = ('cash', 'liabilities')
 
 
 def last_csv_date(store, name):
-  return store.conn.execute("SELECT MAX(date) FROM transactions WHERE account=? AND source='csv'", (name,)).fetchone()[0]
+  return store.conn.execute("SELECT MAX(date) FROM transactions WHERE account=%s AND source='csv'", (name,)).fetchone()[0]
 
 
 def csv_start(store, name):
@@ -66,7 +66,7 @@ def csv_start(store, name):
 
 
 def csv_bank_account(store, name):
-  row = store.conn.execute("SELECT bank_account FROM transactions WHERE account=? AND source='csv' LIMIT 1", (name,)).fetchone()
+  row = store.conn.execute("SELECT bank_account FROM transactions WHERE account=%s AND source='csv' LIMIT 1", (name,)).fetchone()
   return row['bank_account'] if row else None
 
 
@@ -89,14 +89,14 @@ def auto_link(store, config):
         row = existing.get(remote_id)
         if row:
           if row['account'] != a.name:  # moved to another account in accounts.yaml
-            store.conn.execute('UPDATE lunchflow_accounts SET account=? WHERE id=?', (a.name, remote_id))
+            store.conn.execute('UPDATE lunchflow_accounts SET account=%s WHERE id=%s', (a.name, remote_id))
           continue
         previous = csv_bank_account(store, a.name)
         # Share a statement-import bank identity only when one source feeds the account; with several
         # cards each keeps its own, so one card's sync never touches another's pending rows.
         bank_account = previous if previous and len(ids) == 1 else 'lunchflow:' + remote_id
         store.conn.execute(
-          'INSERT INTO lunchflow_accounts(id,account,institution,start_date,bank_account) VALUES (?,?,?,?,?)',
+          'INSERT INTO lunchflow_accounts(id,account,institution,start_date,bank_account) VALUES (%s,%s,%s,%s,%s)',
           (remote_id, a.name, '', csv_start(store, a.name), bank_account))
 
 
@@ -120,7 +120,7 @@ async def check_connections(store, config, accounts):
       source = remote.get(binding['id'])
       if source and source.get('institution') and source['institution'] != binding['institution']:
         with store.conn:
-          store.conn.execute('UPDATE lunchflow_accounts SET institution=? WHERE id=?', (source['institution'], binding['id']))
+          store.conn.execute('UPDATE lunchflow_accounts SET institution=%s WHERE id=%s', (source['institution'], binding['id']))
         a['institution'] = source['institution']
       label = f"{source.get('name', binding['id'])}: " if source and len(bindings[a['name']]) > 1 else ''
       if not source:
@@ -180,7 +180,7 @@ async def configure(store, config, mappings):
     validated.append((remote_id, name, accounts[remote_id]['institution'], start, bank_account))
   with store.conn:
     store.conn.execute('UPDATE lunchflow_accounts SET enabled=0')
-    store.conn.executemany('''INSERT INTO lunchflow_accounts(id,account,institution,start_date,bank_account) VALUES (?,?,?,?,?)
+    store.conn.executemany('''INSERT INTO lunchflow_accounts(id,account,institution,start_date,bank_account) VALUES (%s,%s,%s,%s,%s)
       ON CONFLICT(id) DO UPDATE SET enabled=1, start_date=excluded.start_date,
       institution=excluded.institution, bank_account=excluded.bank_account''', validated)
   return state(store, config)
@@ -241,7 +241,7 @@ async def sync(store, config, due_only=False):
       groups[binding['account']].append(binding)
     outcomes = []
     for account, bindings in groups.items():
-      status = store.conn.execute('SELECT last_success, last_error FROM spending_status WHERE account=?', (account,)).fetchone()
+      status = store.conn.execute('SELECT last_success, last_error FROM spending_status WHERE account=%s', (account,)).fetchone()
       # Healthy accounts sync hourly; one that failed or never synced retries on every call.
       if due_only and status and status['last_success'] and not status['last_error'] \
           and datetime.fromisoformat(now()) - datetime.fromisoformat(status['last_success']) < timedelta(hours=1):
@@ -255,10 +255,10 @@ async def sync(store, config, due_only=False):
       error = ' '.join(dict.fromkeys(errors)) or None
       with store.conn:
         if error:
-          store.conn.execute("""INSERT INTO spending_status(account,last_error) VALUES (?,?)
+          store.conn.execute("""INSERT INTO spending_status(account,last_error) VALUES (%s,%s)
             ON CONFLICT(account) DO UPDATE SET last_error=excluded.last_error""", (account, error))
         else:
-          store.conn.execute("""INSERT INTO spending_status(account,last_success) VALUES (?,?)
+          store.conn.execute("""INSERT INTO spending_status(account,last_success) VALUES (%s,%s)
             ON CONFLICT(account) DO UPDATE SET last_success=excluded.last_success,last_error=NULL""", (account, now()))
       outcomes.append(dict(account=account, count=count, error=error))
     return outcomes
@@ -276,8 +276,8 @@ async def _sync_binding(store, config, binding):
   # Missing pending entries have settled or disappeared; settled history is always retained.
   with store.conn:
     incoming = {r['id'] for r in rows}
-    pending = store.conn.execute("""SELECT id FROM transactions WHERE bank_account=? AND source='lunchflow'
-      AND pending=1 AND date>=?""", (binding['bank_account'] or 'lunchflow:' + binding['id'], binding['start_date'] or '')).fetchall()
-    store.conn.executemany('DELETE FROM transactions WHERE id=?', [(r['id'],) for r in pending if r['id'] not in incoming])
+    pending = store.conn.execute("""SELECT id FROM transactions WHERE bank_account=%s AND source='lunchflow'
+      AND pending=1 AND date>=%s""", (binding['bank_account'] or 'lunchflow:' + binding['id'], binding['start_date'] or '')).fetchall()
+    store.conn.executemany('DELETE FROM transactions WHERE id=%s', [(r['id'],) for r in pending if r['id'] not in incoming])
     spending.save_transactions(store, rows)
   return len(rows)

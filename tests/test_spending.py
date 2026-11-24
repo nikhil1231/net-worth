@@ -87,7 +87,7 @@ def test_recurring_confirm_dismiss_cancel_and_variable_amount(setup):
   assert payment['price_change']==2
   assert spending.report(store,config,'2026-10')['summary']['committed']==0
   with store.conn:
-    store.conn.execute('INSERT INTO recurring_payments VALUES (?,?,?,?)',(payment['id'],'Monzo','Netflix','confirmed'))
+    store.conn.execute('INSERT INTO recurring_payments VALUES (%s,%s,%s,%s)',(payment['id'],'Monzo','Netflix','confirmed'))
   assert spending.report(store,config,'2026-10')['summary']['committed']==12
   store.conn.execute("UPDATE recurring_payments SET status='cancelled'")
   assert spending.report(store,config,'2026-10')['summary']['committed']==0
@@ -176,7 +176,7 @@ def test_rename_retains_transactions_rules_and_recurring_status(setup):
   store,config=setup
   spending.save_transactions(store,[tx('a','2026-07-01'),tx('b','2026-08-01'),tx('c','2026-09-01')])
   payment=spending.recurring(store,spending.transactions(store))[0]
-  store.conn.execute('INSERT INTO recurring_payments VALUES (?,?,?,?)',(payment['id'],'Monzo','Shop','confirmed'))
+  store.conn.execute('INSERT INTO recurring_payments VALUES (%s,%s,%s,%s)',(payment['id'],'Monzo','Shop','confirmed'))
   spending.edit_transaction(store,'a',category='Bills',apply_rule=True)
   store.rename_account('Monzo','Main bank')
   config.accounts[0].name='Main bank'

@@ -94,7 +94,7 @@ def initial(store):
   if not store.conn.execute('SELECT 1 FROM advisor_settings').fetchone():
     s = Settings()
     with store.conn:
-      store.conn.execute('INSERT OR IGNORE INTO advisor_settings VALUES (1,?,?)', (encode(s.model_dump()), next_run(s, datetime.now(UTC))))
+      store.conn.execute('INSERT INTO advisor_settings VALUES (1,%s,%s) ON CONFLICT DO NOTHING', (encode(s.model_dump()), next_run(s, datetime.now(UTC))))
 
 
 def settings(store):
@@ -120,10 +120,10 @@ def save_settings(store, config, s, now=None):
     raise ValueError('Choose current accounts once each for your cash buffer')
   old = settings(store)
   with store.conn:
-    store.conn.execute('UPDATE advisor_settings SET data=? WHERE id=1', (encode(s.model_dump()),))
+    store.conn.execute('UPDATE advisor_settings SET data=%s WHERE id=1', (encode(s.model_dump()),))
     if (old.cadence, old.weekday, old.local_time) != (s.cadence, s.weekday, s.local_time):
-      store.conn.execute('UPDATE advisor_settings SET next_run=? WHERE id=1', (next_run(s, now or datetime.now(UTC)),))
-    store.conn.execute("UPDATE advisor_runs SET settings=? WHERE status='queued'", (encode(s.model_dump()),))
+      store.conn.execute('UPDATE advisor_settings SET next_run=%s WHERE id=1', (next_run(s, now or datetime.now(UTC)),))
+    store.conn.execute("UPDATE advisor_runs SET settings=%s WHERE status='queued'", (encode(s.model_dump()),))
 
 
 def api_key(config):
@@ -140,8 +140,8 @@ def queue(store, trigger='manual', now=None):
     active = store.conn.execute("SELECT id,status FROM advisor_runs WHERE status IN ('queued','running')").fetchone()
     if active:
       return dict(active) | {'existing': True}
-    run_id = store.conn.execute("INSERT INTO advisor_runs(trigger,status,created_at,settings) VALUES (?,'queued',?,?)",
-                                (trigger, stamp(now), encode(settings(store).model_dump()))).lastrowid
+    run_id = store.conn.execute("INSERT INTO advisor_runs(trigger,status,created_at,settings) VALUES (%s,'queued',%s,%s) RETURNING id",
+                                (trigger, stamp(now), encode(settings(store).model_dump()))).fetchone()[0]
   return dict(id=run_id, status='queued', existing=False)
 
 
@@ -462,13 +462,13 @@ def view_run(row, detail=False):
 async def tick(store, config, now=None):
   now = now or datetime.now(UTC)
   # Keep the advisory lock across HTTP; release automatically on cancellation/process death.
-  with open(str(config.db_path) + '.advisor-lock', 'a') as lock:
+  with open(config.data_dir / 'advisor.lock', 'a') as lock:
     try:
       fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
     except BlockingIOError:
       return
     with store.conn:
-      store.conn.execute("UPDATE advisor_runs SET status='failed',finished_at=?,error=? WHERE status='running'",
+      store.conn.execute("UPDATE advisor_runs SET status='failed',finished_at=%s,error=%s WHERE status='running'",
                          (stamp(now), 'The server stopped during this review. Run it again when ready.'))
     due = store.conn.execute('SELECT next_run FROM advisor_settings WHERE id=1').fetchone()[0]
     active = store.conn.execute("SELECT id FROM advisor_runs WHERE status IN ('queued','running')").fetchone()
@@ -479,19 +479,19 @@ async def tick(store, config, now=None):
         # queue() owns its own transaction, so do the insert here.
         if not store.conn.execute("SELECT 1 FROM advisor_runs WHERE status IN ('queued','running')").fetchone():
           s = settings(store)
-          store.conn.execute("INSERT INTO advisor_runs(trigger,status,created_at,settings) VALUES ('scheduled','queued',?,?)", (stamp(now), encode(s.model_dump())))
-          store.conn.execute('UPDATE advisor_settings SET next_run=? WHERE id=1', (next_run(s, now),))
+          store.conn.execute("INSERT INTO advisor_runs(trigger,status,created_at,settings) VALUES ('scheduled','queued',%s,%s)", (stamp(now), encode(s.model_dump())))
+          store.conn.execute('UPDATE advisor_settings SET next_run=%s WHERE id=1', (next_run(s, now),))
     row = store.conn.execute("SELECT * FROM advisor_runs WHERE status='queued' ORDER BY id LIMIT 1").fetchone()
     if not row:
       return
     run_id = row['id']
     with store.conn:
-      store.conn.execute("UPDATE advisor_runs SET status='running',started_at=? WHERE id=?", (stamp(now), run_id))
+      store.conn.execute("UPDATE advisor_runs SET status='running',started_at=%s WHERE id=%s", (stamp(now), run_id))
     try:
       s = Settings.model_validate_json(row['settings'])
       payload, checks = build_review(store, config, s, now)
       with store.conn:
-        store.conn.execute('UPDATE advisor_runs SET payload=? WHERE id=?', (encode(payload), run_id))
+        store.conn.execute('UPDATE advisor_runs SET payload=%s WHERE id=%s', (encode(payload), run_id))
       warning, usage, mode = '', {}, 'calculated'
       summary = 'Your recorded finances have been checked. Review the findings and coverage below.'
       if not payload['local_checks']:
@@ -515,29 +515,29 @@ async def tick(store, config, now=None):
         last_topics = {f['topic'] for f in json.loads(last['report'])['findings']} if last else set()
         for f in checks:
           fp = fingerprint(f, payload)
-          previous = store.conn.execute('SELECT * FROM advisor_findings WHERE topic=?', (f['topic'],)).fetchone()
+          previous = store.conn.execute('SELECT * FROM advisor_findings WHERE topic=%s', (f['topic'],)).fetchone()
           feedback, answer = (previous['feedback'], previous['answer']) if previous else ('new', '')
           if previous and feedback in ('known','dismissed','incorrect') and (previous['fingerprint'] != fp or f['topic'] not in last_topics):
             feedback = 'new'
           f = dict(f, evidence=[dict(e, snapshot=payload['evidence'][e['ref']]) for e in f['evidence']])
           store.conn.execute('''INSERT INTO advisor_findings(topic,data,fingerprint,run_id,first_seen,last_seen,feedback,answer)
-            VALUES (?,?,?,?,?,?,?,?) ON CONFLICT(topic) DO UPDATE SET data=excluded.data,fingerprint=excluded.fingerprint,
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s) ON CONFLICT(topic) DO UPDATE SET data=excluded.data,fingerprint=excluded.fingerprint,
             run_id=excluded.run_id,last_seen=excluded.last_seen,feedback=excluded.feedback''',
             (f['topic'], encode(f), fp, run_id, stamp(now), stamp(now), feedback, answer))
           saved.append(dict(f, feedback=feedback, answer=answer))
         report = dict(summary=summary, findings=saved, period=payload['period'], mode=mode, warning=warning,
                       evidence=payload['evidence'], limitations=payload['limitations'])
-        store.conn.execute("UPDATE advisor_runs SET status='completed',finished_at=?,report=?,usage=? WHERE id=?",
+        store.conn.execute("UPDATE advisor_runs SET status='completed',finished_at=%s,report=%s,usage=%s WHERE id=%s",
                            (stamp(), encode(report), encode(usage), run_id))
     except asyncio.CancelledError:
       with store.conn:
-        store.conn.execute("UPDATE advisor_runs SET status='failed',finished_at=?,error=? WHERE id=?",
+        store.conn.execute("UPDATE advisor_runs SET status='failed',finished_at=%s,error=%s WHERE id=%s",
                            (stamp(), 'The server stopped during this review. Run it again when ready.', run_id))
       raise
     except Exception as e:
       log.error('Advisor review %s failed (%s)', run_id, type(e).__name__)
       with store.conn:
-        store.conn.execute("UPDATE advisor_runs SET status='failed',finished_at=?,error=? WHERE id=?",
+        store.conn.execute("UPDATE advisor_runs SET status='failed',finished_at=%s,error=%s WHERE id=%s",
                            (stamp(), 'The review failed while preparing or saving data. Check the server logs.', run_id))
 
 

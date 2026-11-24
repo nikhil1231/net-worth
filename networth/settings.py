@@ -141,7 +141,7 @@ def rename_state_files(data_dir: Path, old: str, new: str):
   if old_slug == new_slug:
     return
   for file in data_dir.glob(f'{old_slug}.*'):
-    if file.name.startswith(('networth.db', 'accounts.yaml')):  # not state, whatever the account is called
+    if file.name.startswith(('advisor.lock', 'accounts.yaml')):  # not state, whatever the account is called
       continue
     file.rename(data_dir / (new_slug + file.name[len(old_slug):]))
 

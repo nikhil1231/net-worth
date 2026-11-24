@@ -57,7 +57,7 @@ def router(store, config, worker):
 
   @api.get('/runs/{run_id}')
   async def history(run_id: int):
-    row = store.conn.execute('SELECT * FROM advisor_runs WHERE id=?', (run_id,)).fetchone()
+    row = store.conn.execute('SELECT * FROM advisor_runs WHERE id=%s', (run_id,)).fetchone()
     if row is None:
       raise HTTPException(404, 'Review not found')
     return advisor.view_run(row, True)
@@ -65,7 +65,7 @@ def router(store, config, worker):
   @api.put('/findings/{topic}/feedback')
   async def feedback(topic: str, values: Feedback):
     with store.conn:
-      count = store.conn.execute('UPDATE advisor_findings SET feedback=?,answer=? WHERE topic=?',
+      count = store.conn.execute('UPDATE advisor_findings SET feedback=%s,answer=%s WHERE topic=%s',
                                 (values.feedback, values.answer, topic)).rowcount
     if not count:
       raise HTTPException(404, 'Finding not found')

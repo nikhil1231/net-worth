@@ -63,7 +63,7 @@ def save_transactions(store, rows):
     for row in rows:
       store.conn.execute('''INSERT INTO transactions
         (id,account,bank_account,date,time,merchant,description,amount,category,kind,pending,source)
-        VALUES (:id,:account,:bank_account,:date,:time,:merchant,:description,:amount,:category,:kind,:pending,:source)
+        VALUES (%(id)s,%(account)s,%(bank_account)s,%(date)s,%(time)s,%(merchant)s,%(description)s,%(amount)s,%(category)s,%(kind)s,%(pending)s,%(source)s)
         ON CONFLICT(id) DO UPDATE SET date=excluded.date, time=excluded.time, merchant=excluded.merchant,
         description=excluded.description, amount=excluded.amount, category=excluded.category,
         kind=excluded.kind, pending=excluded.pending''', {'time': None, **row})
@@ -91,7 +91,7 @@ def transactions(store, account=None):
 
 
 def edit_transaction(store, transaction_id, category=None, kind=None, apply_rule=False, recurring_type=None, label=None):
-  row = store.conn.execute('SELECT * FROM transactions WHERE id=?', (transaction_id,)).fetchone()
+  row = store.conn.execute('SELECT * FROM transactions WHERE id=%s', (transaction_id,)).fetchone()
   if row is None:
     raise LookupError('Transaction not found')
   if category is not None and category not in CATEGORIES:
@@ -112,30 +112,31 @@ def edit_transaction(store, transaction_id, category=None, kind=None, apply_rule
       rule_key = (row['account'], row['bank_account'], key)
       rid = hashlib.sha256(f"{row['bank_account']}|{key}".encode()).hexdigest()
       if recurring_type == 'auto':
-        store.conn.execute('DELETE FROM monthly_spending_rules WHERE account=? AND bank_account=? AND merchant=?', rule_key)
+        store.conn.execute('DELETE FROM monthly_spending_rules WHERE account=%s AND bank_account=%s AND merchant=%s', rule_key)
       else:
-        store.conn.execute('''INSERT INTO monthly_spending_rules (account,bank_account,merchant,recurring_type) VALUES (?,?,?,?)
+        store.conn.execute('''INSERT INTO monthly_spending_rules (account,bank_account,merchant,recurring_type) VALUES (%s,%s,%s,%s)
           ON CONFLICT(account,bank_account,merchant) DO UPDATE SET recurring_type=excluded.recurring_type''', (*rule_key, recurring_type))
-      store.conn.execute('DELETE FROM recurring_payments WHERE id=?', (rid,))
+      store.conn.execute('DELETE FROM recurring_payments WHERE id=%s', (rid,))
       if recurring_type in ('monthly', 'subscription'):
-        store.conn.execute('INSERT INTO recurring_payments VALUES (?,?,?,?)', (rid, row['account'], row['merchant'], 'confirmed'))
+        store.conn.execute('INSERT INTO recurring_payments VALUES (%s,%s,%s,%s)', (rid, row['account'], row['merchant'], 'confirmed'))
     if category == 'Savings' and kind is None:
       # Saved money is moved, not spent.
       kind = 'transfer'
     if category is not None:
-      store.conn.execute('UPDATE transactions SET category_override=? WHERE id=?', (category, transaction_id))
+      store.conn.execute('UPDATE transactions SET category_override=%s WHERE id=%s', (category, transaction_id))
       if apply_rule:
-        store.conn.execute('INSERT OR REPLACE INTO spending_rules VALUES (?,?,?)',
+        store.conn.execute('INSERT INTO spending_rules VALUES (%s,%s,%s) '
+                           'ON CONFLICT (account, merchant) DO UPDATE SET category = excluded.category',
                            (row['account'], merchant_key(row['merchant']), category))
         # The new merchant rule also applies to earlier explicit categorisations.
-        for other in store.conn.execute('SELECT id,merchant FROM transactions WHERE account=?', (row['account'],)).fetchall():
+        for other in store.conn.execute('SELECT id,merchant FROM transactions WHERE account=%s', (row['account'],)).fetchall():
           if merchant_key(other['merchant']) == merchant_key(row['merchant']):
-            store.conn.execute('UPDATE transactions SET category_override=NULL WHERE id=?', (other['id'],))
+            store.conn.execute('UPDATE transactions SET category_override=NULL WHERE id=%s', (other['id'],))
     if kind is not None:
-      store.conn.execute('UPDATE transactions SET kind_override=? WHERE id=?', (kind, transaction_id))
+      store.conn.execute('UPDATE transactions SET kind_override=%s WHERE id=%s', (kind, transaction_id))
     if label is not None:
       # A blank label clears it, showing the bank's reference again.
-      store.conn.execute('UPDATE transactions SET label=? WHERE id=?', (label.strip() or None, transaction_id))
+      store.conn.execute('UPDATE transactions SET label=%s WHERE id=%s', (label.strip() or None, transaction_id))
 
 
 def add_months(day, months):
@@ -398,7 +399,7 @@ async def sync_monzo(store, config, account=None, full_history=False):
       rows, history_from = await asyncio.wait_for(fetch, 180)
       save_transactions(store, rows)
       with store.conn:
-        store.conn.execute('''INSERT INTO spending_status(account,last_success,last_error,history_from) VALUES (?,?,NULL,?)
+        store.conn.execute('''INSERT INTO spending_status(account,last_success,last_error,history_from) VALUES (%s,%s,NULL,%s)
           ON CONFLICT(account) DO UPDATE SET last_success=excluded.last_success,last_error=NULL,
           history_from=MIN(COALESCE(spending_status.history_from,excluded.history_from),excluded.history_from)''', (a.name, now(), history_from))
       outcomes.append(dict(account=a.name, count=len(rows), error=None))
@@ -406,7 +407,7 @@ async def sync_monzo(store, config, account=None, full_history=False):
       # HTTP exceptions can contain request URLs; never persist tokens or transaction details.
       error = 'Monzo sync failed. Check account authorisation and try again; existing transactions are retained.'
       with store.conn:
-        store.conn.execute('''INSERT INTO spending_status(account,last_error) VALUES (?,?)
+        store.conn.execute('''INSERT INTO spending_status(account,last_error) VALUES (%s,%s)
           ON CONFLICT(account) DO UPDATE SET last_error=excluded.last_error''', (a.name,error))
       outcomes.append(dict(account=a.name, count=0, error=error))
   return outcomes

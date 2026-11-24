@@ -44,8 +44,7 @@ def payment(store, ident, day, amount, kind='expense', pending=False):
   spending.save_transactions(store, [dict(id=ident, account='Bank', bank_account='private-bank-id', date=str(day),
     merchant='Shop', description='private-description', amount=amount, kind=kind,
     pending=pending, category='Shopping', source='csv')])
-  store.conn.execute('UPDATE transactions SET kind_override=? WHERE id=?', (kind, ident))
-  store.conn.commit()
+  store.conn.execute('UPDATE transactions SET kind_override=%s WHERE id=%s', (kind, ident))
 
 
 def test_value_change_reconciles_without_claiming_returns(setup):
@@ -69,7 +68,7 @@ def test_new_unpriced_and_removed_positions_stay_explicit(setup):
   snapshot(store, NOW-timedelta(days=7), bank=1000)
   run = snapshot(store, NOW, bank=1200)
   with store.conn:
-    store.conn.execute("UPDATE snapshots SET asset='NEW', value_gbp=NULL, price_gbp=NULL WHERE run_id=? AND account='ISA'", (run,))
+    store.conn.execute("UPDATE snapshots SET asset='NEW', value_gbp=NULL, price_gbp=NULL WHERE run_id=%s AND account='ISA'", (run,))
   payload, checks = advisor.build_review(store, config, advisor.Settings(), NOW)
   f = payload['evidence']['value-change']['facts']
   assert f['value_change_gbp'] == 100
@@ -134,7 +133,7 @@ def test_complete_comparison_flags_material_spending_change(setup):
   for i in range(35):
     payment(store, str(i), day-timedelta(days=i), -1000 if i>=7 else -10000)
   with store.conn:
-    store.conn.execute('INSERT INTO spending_status(account,last_success) VALUES (?,?)', ('Bank',advisor.stamp(NOW)))
+    store.conn.execute('INSERT INTO spending_status(account,last_success) VALUES (%s,%s)', ('Bank',advisor.stamp(NOW)))
   payload, checks = advisor.build_review(store, config, advisor.Settings(), NOW)
   assert payload['evidence']['spending']['facts']['comparison_coverage']
   assert any(c['topic'] == 'spending-above-baseline' for c in checks)
@@ -181,13 +180,13 @@ def test_calculated_review_runs_without_key_and_remembers_feedback(setup):
   snapshot(store, NOW)
   first = advisor.queue(store, now=NOW)
   asyncio.run(advisor.tick(store, config, NOW))
-  row = store.conn.execute('SELECT * FROM advisor_runs WHERE id=?',(first['id'],)).fetchone()
+  row = store.conn.execute('SELECT * FROM advisor_runs WHERE id=%s',(first['id'],)).fetchone()
   report = advisor.view_run(row, True)['report']
   assert row['status'] == 'completed' and report['mode'] == 'calculated'
   assert report['findings'][0]['evidence'][0]['snapshot']['facts']
   topic = report['findings'][0]['topic']
   with store.conn:
-    store.conn.execute("UPDATE advisor_findings SET feedback='known',answer='Already reviewed' WHERE topic=?",(topic,))
+    store.conn.execute("UPDATE advisor_findings SET feedback='known',answer='Already reviewed' WHERE topic=%s",(topic,))
   advisor.queue(store, now=NOW)
   asyncio.run(advisor.tick(store, config, NOW))
   row = store.conn.execute('SELECT * FROM advisor_runs ORDER BY id DESC LIMIT 1').fetchone()
@@ -198,16 +197,16 @@ def test_calculated_review_runs_without_key_and_remembers_feedback(setup):
 def test_schedule_catches_up_once_and_restart_recovers(setup):
   config, store = setup
   with store.conn:
-    store.conn.execute('UPDATE advisor_settings SET next_run=?', (advisor.stamp(NOW-timedelta(days=15)),))
+    store.conn.execute('UPDATE advisor_settings SET next_run=%s', (advisor.stamp(NOW-timedelta(days=15)),))
   asyncio.run(advisor.tick(store, config, NOW))
   asyncio.run(advisor.tick(store, config, NOW))
   assert store.conn.execute('SELECT COUNT(*) FROM advisor_runs').fetchone()[0] == 1
   assert store.conn.execute('SELECT next_run FROM advisor_settings').fetchone()[0] > advisor.stamp(NOW)
   run = advisor.queue(store, now=NOW)
   with store.conn:
-    store.conn.execute("UPDATE advisor_runs SET status='running' WHERE id=?",(run['id'],))
+    store.conn.execute("UPDATE advisor_runs SET status='running' WHERE id=%s",(run['id'],))
   asyncio.run(advisor.tick(store, config, NOW))
-  assert store.conn.execute('SELECT status FROM advisor_runs WHERE id=?',(run['id'],)).fetchone()[0] == 'failed'
+  assert store.conn.execute('SELECT status FROM advisor_runs WHERE id=%s',(run['id'],)).fetchone()[0] == 'failed'
 
 
 def test_provider_uses_strict_schema_data_policy_and_validates_references(setup, monkeypatch):
@@ -262,7 +261,7 @@ def test_empty_history_does_not_call_model_even_with_key(setup, monkeypatch):
 def test_cross_process_lock_leaves_queued_review_untouched(setup):
   config, store = setup
   advisor.queue(store, now=NOW)
-  with open(str(config.db_path) + '.advisor-lock', 'a') as lock:
+  with open(config.data_dir / 'advisor.lock', 'a') as lock:
     fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
     asyncio.run(advisor.tick(store, config, NOW))
   assert store.conn.execute('SELECT status FROM advisor_runs').fetchone()[0] == 'queued'

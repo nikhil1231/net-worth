@@ -33,11 +33,6 @@ class Config:
   path: Optional[Path] = None  # the accounts.yaml this came from, for the settings page to edit
 
   @property
-  def db_path(self) -> Path:
-    """Where the old SQLite file was; lock files are still kept next to it."""
-    return self.data_dir / 'networth.db'
-
-  @property
   def db_url(self) -> str:
     """The Postgres database (DATABASE_URL)."""
     return os.environ['DATABASE_URL']

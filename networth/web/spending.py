@@ -77,7 +77,7 @@ def router(store, config, runner):
                    period: Literal[spending.PERIODS] = 'month'):
     try:
       lunchflow.auto_link(store, config)
-      if account and not store.conn.execute('SELECT 1 FROM lunchflow_accounts WHERE account=?', (account,)).fetchone():
+      if account and not store.conn.execute('SELECT 1 FROM lunchflow_accounts WHERE account=%s', (account,)).fetchone():
         config.account(account)
       result = spending.report(store, config, month, account, period)
       await lunchflow.check_connections(store, config, result['accounts'])
@@ -124,20 +124,20 @@ def router(store, config, runner):
   @api.post('/import')
   async def statement(values: StatementImport):
     account = next((a for a in config.accounts if a.name == values.account), None)
-    linked = store.conn.execute('SELECT 1 FROM lunchflow_accounts WHERE account=?', (values.account,)).fetchone()
+    linked = store.conn.execute('SELECT 1 FROM lunchflow_accounts WHERE account=%s', (values.account,)).fetchone()
     if account is None or account.category != 'cash' or account.type == 'monzo' or linked:
       raise HTTPException(400, 'Choose a cash account without automatic bank syncing')
     try:
-      previous = store.conn.execute("SELECT bank_account FROM transactions WHERE account=? AND source='csv' LIMIT 1", (values.account,)).fetchone()
+      previous = store.conn.execute("SELECT bank_account FROM transactions WHERE account=%s AND source='csv' LIMIT 1", (values.account,)).fetchone()
       rows = spending.parse_csv(values.text, values.account, values.mapping, previous['bank_account'] if previous else None)
     except ValueError as e:
       raise HTTPException(400, str(e))
-    existing = {r['id'] for r in store.conn.execute('SELECT id FROM transactions WHERE account=?', (values.account,))}
+    existing = {r['id'] for r in store.conn.execute('SELECT id FROM transactions WHERE account=%s', (values.account,))}
     new = [r for r in rows if r['id'] not in existing]
     if values.commit:
       spending.save_transactions(store, rows)
       with store.conn:
-        store.conn.execute('''INSERT INTO spending_status(account,last_success) VALUES (?,?)
+        store.conn.execute('''INSERT INTO spending_status(account,last_success) VALUES (%s,%s)
           ON CONFLICT(account) DO UPDATE SET last_success=excluded.last_success,last_error=NULL''', (values.account, spending.now()))
     return dict(count=len(rows), new_count=len(new), duplicates=len(rows)-len(new),
                 first_date=min(r['date'] for r in rows), last_date=max(r['date'] for r in rows),
@@ -150,7 +150,8 @@ def router(store, config, runner):
     if not match or (match['account'], match['merchant']) != (values.account, values.merchant):
       raise HTTPException(404, 'Recurring payment not found')
     with store.conn:
-      store.conn.execute('INSERT OR REPLACE INTO recurring_payments VALUES (?,?,?,?)',
+      store.conn.execute('INSERT INTO recurring_payments VALUES (%s,%s,%s,%s) '
+                         'ON CONFLICT (id) DO UPDATE SET account = excluded.account, merchant = excluded.merchant, status = excluded.status',
                          (recurring_id, values.account, values.merchant, values.status))
     return {'ok': True}
 

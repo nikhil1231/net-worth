@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
-from networth import sqlpg
+from networth.db import Db, Row
 from networth.models import Holding
 
 SCHEMA = '''
@@ -65,23 +65,22 @@ class SnapshotRow:
 
 def create(conn, schema: str):
   """Run a schema script once at a time across processes (the web app and the CLI can start together)."""
-  conn.executescript(f'BEGIN; SELECT pg_advisory_xact_lock(6150221); {schema}; COMMIT;')
+  conn.execute(f'BEGIN; SELECT pg_advisory_xact_lock(6150221); {schema}; COMMIT;')
 
 
 class Store:
-  """Everything in Postgres (DATABASE_URL). One connection for the
-  process, shared between threads, with sqlite3's transaction behaviour (sqlpg.SharedConnection)."""
+  """Everything in Postgres (DATABASE_URL), over one connection shared by the whole process (see db.Db)."""
   def __init__(self, url: str):
-    self.conn = sqlpg.SharedConnection(url)
+    self.conn = Db(url)
     create(self.conn, SCHEMA)
     from networth.spending import initialise
     initialise(self)
 
   def write_run(self, ts: str, rows: list[SnapshotRow]) -> int:
     with self.conn:
-      run_id = self.conn.execute('INSERT INTO runs (ts) VALUES (?)', (ts,)).lastrowid
+      run_id = self.conn.execute('INSERT INTO runs (ts) VALUES (%s) RETURNING id', (ts,)).fetchone()[0]
       self.conn.executemany(
-        'INSERT INTO snapshots (run_id, account, category, asset, name, quantity, native_value, native_currency, price_gbp, value_gbp, fetched_at, wallet, chain) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        'INSERT INTO snapshots (run_id, account, category, asset, name, quantity, native_value, native_currency, price_gbp, value_gbp, fetched_at, wallet, chain) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)',
         [(run_id, r.account, r.category, r.holding.asset, r.holding.name, r.holding.quantity,
           r.holding.value, r.holding.currency, r.price_gbp, r.value_gbp, r.fetched_at, r.holding.wallet, r.holding.chain) for r in rows],
       )
@@ -90,48 +89,49 @@ class Store:
   def rename_account(self, old: str, new: str):
     """Move an account's history and status to its new name, so renaming doesn't start it afresh."""
     with self.conn:
-      self.conn.execute('UPDATE snapshots SET account = ? WHERE account = ?', (new, old))
+      self.conn.execute('UPDATE snapshots SET account = %s WHERE account = %s', (new, old))
       for table in ('transactions', 'spending_rules', 'monthly_spending_rules', 'recurring_payments', 'spending_status', 'lunchflow_accounts'):
-        self.conn.execute(f'UPDATE {table} SET account=? WHERE account=?', (new, old))
-      self.conn.execute('DELETE FROM account_status WHERE account = ?', (new,))
-      self.conn.execute('UPDATE account_status SET account = ? WHERE account = ?', (new, old))
+        self.conn.execute(f'UPDATE {table} SET account=%s WHERE account=%s', (new, old))
+      self.conn.execute('DELETE FROM account_status WHERE account = %s', (new,))
+      self.conn.execute('UPDATE account_status SET account = %s WHERE account = %s', (new, old))
 
   # --- account status ---
 
-  def get_status(self, account: str) -> Optional[sqlpg.Row]:
-    return self.conn.execute('SELECT * FROM account_status WHERE account = ?', (account,)).fetchone()
+  def get_status(self, account: str) -> Optional[Row]:
+    return self.conn.execute('SELECT * FROM account_status WHERE account = %s', (account,)).fetchone()
 
-  def all_status(self) -> dict[str, sqlpg.Row]:
+  def all_status(self) -> dict[str, Row]:
     return {r['account']: r for r in self.conn.execute('SELECT * FROM account_status')}
 
   def record_attempt(self, account: str, ts: str, error: Optional[str] = None):
     with self.conn:
       self.conn.execute('''
         INSERT INTO account_status (account, last_attempt, last_success, last_error)
-        VALUES (:account, :ts, CASE WHEN CAST(:error AS TEXT) IS NULL THEN :ts END, :error)
+        VALUES (%(account)s, %(ts)s, CASE WHEN CAST(%(error)s AS TEXT) IS NULL THEN %(ts)s END, %(error)s)
         ON CONFLICT (account) DO UPDATE SET
-          last_attempt = :ts,
-          last_success = CASE WHEN CAST(:error AS TEXT) IS NULL THEN :ts ELSE account_status.last_success END,
-          last_error = :error
+          last_attempt = %(ts)s,
+          last_success = CASE WHEN CAST(%(error)s AS TEXT) IS NULL THEN %(ts)s ELSE account_status.last_success END,
+          last_error = %(error)s
       ''', {'account': account, 'ts': ts, 'error': error})
 
   # --- classifications ---
 
   def get_classification(self, asset: str) -> Optional[dict]:
-    row = self.conn.execute('SELECT data FROM classifications WHERE asset = ?', (asset,)).fetchone()
+    row = self.conn.execute('SELECT data FROM classifications WHERE asset = %s', (asset,)).fetchone()
     return json.loads(row['data']) if row else None
 
   def set_classification(self, asset: str, data: dict):
     with self.conn:
-      self.conn.execute('INSERT OR REPLACE INTO classifications VALUES (?, ?)', (asset, json.dumps(data)))
+      self.conn.execute('INSERT INTO classifications VALUES (%s, %s) ON CONFLICT (asset) DO UPDATE SET data = excluded.data',
+                        (asset, json.dumps(data)))
 
   # --- reads ---
 
   def last_holdings(self, account: str) -> tuple[list[Holding], Optional[str]]:
     """Holdings from the most recent run that included this account, and when they were fetched."""
     rows = self.conn.execute('''
-      SELECT * FROM snapshots WHERE account = ? AND run_id = (
-        SELECT MAX(run_id) FROM snapshots WHERE account = ?
+      SELECT * FROM snapshots WHERE account = %s AND run_id = (
+        SELECT MAX(run_id) FROM snapshots WHERE account = %s
       )
     ''', (account, account)).fetchall()
     if not rows:
@@ -139,21 +139,21 @@ class Store:
     holdings = [Holding(r['asset'], r['quantity'], r['native_value'], r['native_currency'], r['name'], r['wallet'], r['chain']) for r in rows]
     return holdings, rows[0]['fetched_at']
 
-  def latest_run(self) -> Optional[sqlpg.Row]:
+  def latest_run(self) -> Optional[Row]:
     return self.conn.execute('SELECT * FROM runs ORDER BY id DESC LIMIT 1').fetchone()
 
-  def run_at_or_before(self, ts: str) -> Optional[sqlpg.Row]:
-    return self.conn.execute('SELECT * FROM runs WHERE ts <= ? ORDER BY ts DESC LIMIT 1', (ts,)).fetchone()
+  def run_at_or_before(self, ts: str) -> Optional[Row]:
+    return self.conn.execute('SELECT * FROM runs WHERE ts <= %s ORDER BY ts DESC LIMIT 1', (ts,)).fetchone()
 
-  def snapshots(self, run_id: int) -> list[sqlpg.Row]:
-    return self.conn.execute('SELECT * FROM snapshots WHERE run_id = ?', (run_id,)).fetchall()
+  def snapshots(self, run_id: int) -> list[Row]:
+    return self.conn.execute('SELECT * FROM snapshots WHERE run_id = %s', (run_id,)).fetchall()
 
   def run_total(self, run_id: int) -> float:
-    row = self.conn.execute('SELECT SUM(value_gbp) FROM snapshots WHERE run_id = ?', (run_id,)).fetchone()
+    row = self.conn.execute('SELECT SUM(value_gbp) FROM snapshots WHERE run_id = %s', (run_id,)).fetchone()
     return row[0] or 0.0
 
   def totals_since(self, since: str, group_by: str, cash_category: str = 'cash',
-                   cash_assets: frozenset[str] | set[str] = frozenset()) -> list[sqlpg.Row]:
+                   cash_assets: frozenset[str] | set[str] = frozenset()) -> list[Row]:
     """(run_id, ts, key, value) for every run since `since`, grouped by 'category' or 'account'.
     Grouped by category, `cash_assets` count towards `cash_category` whichever account holds them."""
     if group_by not in ('category', 'account'):
@@ -161,12 +161,12 @@ class Store:
     key = 's.account'
     params: list = [since]
     if group_by == 'category':
-      key = f"CASE WHEN UPPER(s.asset) IN ({','.join('?' * len(cash_assets)) or 'NULL'}) THEN ? ELSE s.category END"
-      params = [*sorted(cash_assets), cash_category, since]
+      key = 'CASE WHEN UPPER(s.asset) = ANY(%s::text[]) THEN %s ELSE s.category END'
+      params = [sorted(cash_assets), cash_category, since]
     return self.conn.execute(f'''
       SELECT runs.id AS run_id, runs.ts AS ts, {key} AS key, SUM(s.value_gbp) AS value
       FROM runs JOIN snapshots s ON s.run_id = runs.id
-      WHERE runs.ts >= ?
+      WHERE runs.ts >= %s
       GROUP BY runs.id, key
       ORDER BY runs.ts
     ''', params).fetchall()

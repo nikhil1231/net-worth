@@ -53,7 +53,7 @@ all accounts. Accounts that weren't due, or failed, are carried forward from the
 | `networth/pricing.py`, `classify.py` | GBP prices; country and sector exposure per holding. |
 | `networth/spending.py`, `lunchflow.py`, `categorise.py` | Transactions, categories, transfers, recurring payments. |
 | `networth/advisor.py` | The weekly review. |
-| `networth/store.py`, `sqlpg.py` | Postgres storage. |
+| `networth/store.py`, `db.py` | Postgres storage. |
 | `networth/web/` | FastAPI: the JSON API and the built dashboard. |
 | `frontend/` | React, Recharts and Vite. |
 
