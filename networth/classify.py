@@ -353,7 +353,7 @@ def _price_gbp(info: dict, prices: Optional[PriceBook]) -> Optional[float]:
   if currency == 'GBP':
     return price
   fx = prices.price(currency) if prices else None
-  return price * fx if fx else None
+  return price * float(fx) if fx else None  # a quote for the sandbox, cached as JSON
 
 
 def classify(asset: str, name: Optional[str], hint: dict, prices: Optional[PriceBook] = None) -> dict:

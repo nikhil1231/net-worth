@@ -4,7 +4,7 @@ import os
 from networth import http
 from networth.config import ConfigError
 from networth.connectors.base import Connector, Field, connector
-from networth.models import Holding
+from networth.models import Holding, from_units
 from networth.connectors.token_prices import token_usd_quote
 
 ETHERSCAN_URL = 'https://api.etherscan.io/v2/api'
@@ -67,7 +67,7 @@ class EvmWallet(Connector):
     natives, raw = await asyncio.gather(
       reader.native_balances(addresses),
       asyncio.gather(*[reader.token_balance([a], t['contract']) for a in addresses for t in tokens]))
-    quantities = [[raw[i * len(tokens) + j] / 10 ** t['decimals'] for j, t in enumerate(tokens)]
+    quantities = [[from_units(raw[i * len(tokens) + j], t['decimals']) for j, t in enumerate(tokens)]
                   for i in range(len(addresses))]
     # One quote per token, and only for tokens someone actually holds.
     held = [j for j in range(len(tokens)) if any(q[j] for q in quantities)]
@@ -75,7 +75,7 @@ class EvmWallet(Connector):
 
     holdings = []
     for address, native, amounts in zip(addresses, natives, quantities):
-      holdings.append(Holding(chain.get('native_symbol', 'ETH'), native / 1e18,
+      holdings.append(Holding(chain.get('native_symbol', 'ETH'), from_units(native, 18),
                               name=name, wallet=address, chain=name))
       for j, (token, quantity) in enumerate(zip(tokens, amounts)):
         price = prices.get(j)

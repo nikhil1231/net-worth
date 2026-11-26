@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta, timezone
+from decimal import Decimal
 from typing import Optional
 
 from networth.config import Config
@@ -6,6 +7,7 @@ from networth.store import Store
 
 CHANGE_PERIODS = {'24h': timedelta(days=1), '7d': timedelta(days=7), '30d': timedelta(days=30), '1y': timedelta(days=365)}
 MAX_HISTORY_POINTS = 400
+ZERO = Decimal(0)  # amounts are Decimals from the database; FastAPI sends them to the browser as JSON numbers
 # Fiat and stablecoins count as cash wherever they're held (ISA cash, USDC in a wallet, the bank).
 CASH_CATEGORY = 'cash'
 CASH_ASSETS = {'GBP', 'USD', 'EUR', 'USDC', 'USDC.E', 'USDT', 'USDB', 'DAI', 'USDS', 'USDE', 'PYUSD', 'FDUSD',
@@ -22,7 +24,7 @@ def summary(store: Store, config: Config) -> dict:
   status = store.all_status()
   accounts = {
     a.name: {
-      'name': a.name, 'category': a.category, 'type': a.type, 'value': 0.0, 'fetched_at': None,
+      'name': a.name, 'category': a.category, 'type': a.type, 'value': ZERO, 'fetched_at': None,
       'holdings': [], 'unpriced': [],
       'last_success': status[a.name]['last_success'] if a.name in status else None,
       'last_error': status[a.name]['last_error'] if a.name in status else None,
@@ -30,7 +32,7 @@ def summary(store: Store, config: Config) -> dict:
     for a in config.accounts
   }
   if run is None:
-    return {'ts': None, 'total': 0.0, 'categories': {}, 'category_accounts': {}, 'accounts': list(accounts.values()),
+    return {'ts': None, 'total': ZERO, 'categories': {}, 'category_accounts': {}, 'accounts': list(accounts.values()),
             'changes': {}}
 
   for row in store.snapshots(run['id']):
@@ -73,13 +75,13 @@ def summary(store: Store, config: Config) -> dict:
     account['holdings'].sort(key=lambda h: h['value'], reverse=True)
 
   total = sum(a['value'] for a in accounts.values())
-  category_accounts: dict[str, dict[str, float]] = {}  # {category: {account: value}}
+  category_accounts: dict[str, dict[str, Decimal]] = {}  # {category: {account: value}}
   for account in accounts.values():
     for h in account['holdings']:
       if not h['value']:
         continue
       per_account = category_accounts.setdefault(bucket(account['category'], h['asset']), {})
-      per_account[account['name']] = per_account.get(account['name'], 0.0) + h['value']
+      per_account[account['name']] = per_account.get(account['name'], ZERO) + h['value']
   categories = {c: sum(v.values()) for c, v in category_accounts.items()}
 
   run_ts = datetime.fromisoformat(run['ts'])
@@ -108,11 +110,11 @@ def history(store: Store, days: Optional[int], group_by: str = 'category') -> di
     since = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat(timespec='seconds')
 
   runs: dict[int, dict] = {}
-  keys: dict[str, float] = {}
+  keys: dict[str, Decimal] = {}
   for row in store.totals_since(since, group_by, CASH_CATEGORY, CASH_ASSETS):
     point = runs.setdefault(row['run_id'], {'ts': row['ts'], 'values': {}})
-    point['values'][row['key']] = row['value'] or 0.0
-    keys[row['key']] = row['value'] or 0.0  # ends up holding the latest value per key
+    point['values'][row['key']] = row['value'] or ZERO
+    keys[row['key']] = row['value'] or ZERO  # ends up holding the latest value per key
 
   points = list(runs.values())
   if len(points) > MAX_HISTORY_POINTS:
@@ -138,10 +140,10 @@ def wallet_details(store: Store, config: Config, name: str) -> dict:
   if account.type not in ('bitcoin', 'evm', 'solana') or account.error:
     return {}
   addresses = list(dict.fromkeys(account.params.get('addresses', [])))
-  wallets = {address: {'address': address, 'label': f'Wallet {i + 1}', 'value': 0.0,
+  wallets = {address: {'address': address, 'label': f'Wallet {i + 1}', 'value': ZERO,
                        'holdings': [], 'fetched_at': None} for i, address in enumerate(addresses)}
   run = store.latest_run()
-  unattributed = 0.0
+  unattributed = ZERO
   unattributed_holdings = False
   if run:
     for row in store.snapshots(run['id']):
@@ -170,7 +172,7 @@ def crypto_details(store: Store, config: Config, name: str, chain: Optional[str]
     raise ValueError('Unknown wallet')
   overview = next(a for a in summary(store, config)['accounts'] if a['name'] == name)
   result = overview | {'name': chain or wallet, 'parent_account': name,
-                       'holdings': [], 'unpriced': [], 'value': 0.0, 'classifications': {}}
+                       'holdings': [], 'unpriced': [], 'value': ZERO, 'classifications': {}}
   run = store.latest_run()
   grouped = {}
   if run:
@@ -180,7 +182,7 @@ def crypto_details(store: Store, config: Config, name: str, chain: Optional[str]
       key = (row['asset'], row['value_gbp'] is None)
       if key not in grouped:
         grouped[key] = {'asset': row['asset'], 'name': row['name'] or row['asset'],
-                        'quantity': 0.0, 'value': None if key[1] else 0.0, 'price': None, 'locations': []}
+                        'quantity': ZERO, 'value': None if key[1] else ZERO, 'price': None, 'locations': []}
       h = grouped[key]
       h['quantity'] += row['quantity']
       h['locations'].append({'wallet': row['wallet'], 'chain': row['chain'],

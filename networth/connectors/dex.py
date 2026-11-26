@@ -1,11 +1,10 @@
 """Public, read-only collateral and recovery balances. Never signs transactions."""
 import asyncio
-from decimal import Decimal
 
 from networth import http
 from networth.connectors.base import Connector, Field, connector
 from networth.connectors.evm import RpcReader
-from networth.models import Holding
+from networth.models import Holding, from_units
 
 
 async def uint_call(reader, contract, selector, argument):
@@ -36,7 +35,7 @@ class IntentX(Connector):
     ])
     if positions:
       raise RuntimeError('Open IntentX positions need PnL valuation; previous collateral value retained')
-    quantity = float(Decimal(balance + allocated) / Decimal(10 ** 18))
+    quantity = from_units(balance + allocated, 18)
     return [Holding('USDC', quantity, name='IntentX beans123 collateral',
                     wallet=self.param('wallet'), chain='Base')]
 
@@ -49,7 +48,7 @@ def unclaimed_dfx(rows, wallet):
     if row['claimant'] != wallet:
       raise RuntimeError('Drift eligibility claimant mismatch')
     amount += max(0, int(row['claimable_amount']) - int(row['claimed_amount']))
-  return float(Decimal(amount) / Decimal(10 ** 6))
+  return from_units(amount, 6)
 
 
 @connector('drift_recovery')

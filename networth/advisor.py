@@ -8,6 +8,7 @@ import math
 import os
 from collections import defaultdict
 from datetime import datetime, time, timedelta, timezone
+from decimal import Decimal
 from typing import Literal
 from urllib.parse import quote
 from zoneinfo import ZoneInfo
@@ -154,13 +155,25 @@ def amount(value):
   return f'{"−" if value < 0 else ""}£{abs(value):,.2f}'
 
 
+def as_floats(value):
+  """Snapshot amounts are exact Decimals. The review is arithmetic over them (shares, effects, rounded to the penny
+  for display) and goes out as JSON, so it works in floats from the start."""
+  if isinstance(value, Decimal):
+    return float(value)
+  if isinstance(value, dict):
+    return {k: as_floats(v) for k, v in value.items()}
+  if isinstance(value, list):
+    return [as_floats(v) for v in value]
+  return value
+
+
 def finite(value):
   return isinstance(value, (int, float)) and math.isfinite(value)
 
 
 def build_review(store, config, s, now):
   """All calculations are local; only explicit, bounded facts are exported."""
-  summary = reports.summary(store, config)
+  summary = as_floats(reports.summary(store, config))
   today = now.astimezone(TZ).date()
   end = today - timedelta(days=1)
   start = end - timedelta(days=6)
@@ -177,7 +190,7 @@ def build_review(store, config, s, now):
   latest = store.latest_run()
   names = {a.name for a in config.accounts}
   account_configs = {a.name: a for a in config.accounts}
-  current_rows = [dict(r) for r in store.snapshots(latest['id']) if r['account'] in names] if latest else []
+  current_rows = [as_floats(dict(r)) for r in store.snapshots(latest['id']) if r['account'] in names] if latest else []
   fact('portfolio', 'Recorded portfolio', dict(snapshot_at=summary['ts'], total_gbp=round(summary['total'], 2),
        categories_gbp=summary['categories'], valued_positions=sum(r['value_gbp'] is not None for r in current_rows),
        note='Snapshot value, not investment performance. Cash-like tokens are included in dashboard cash, not automatically in the cash buffer.'))
@@ -225,7 +238,7 @@ def build_review(store, config, s, now):
   # Compare current configured accounts only. Account additions/removals remain explicit.
   prior = store.run_at_or_before(stamp(now - timedelta(days=7)))
   if latest and prior and prior['id'] != latest['id']:
-    old_rows = [dict(r) for r in store.snapshots(prior['id']) if r['account'] in names]
+    old_rows = [as_floats(dict(r)) for r in store.snapshots(prior['id']) if r['account'] in names]
     def positions(rows):
       groups = defaultdict(lambda: [0.0, 0.0, True])
       for r in rows:

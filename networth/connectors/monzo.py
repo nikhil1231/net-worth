@@ -8,7 +8,7 @@ from urllib.parse import parse_qs, urlencode, urlparse
 
 from networth import http
 from networth.connectors.base import Connector, Field, connector
-from networth.models import Holding
+from networth.models import Holding, from_units
 
 API_URL = 'https://api.monzo.com'
 AUTH_URL = 'https://auth.monzo.com/'
@@ -61,13 +61,13 @@ class Monzo(Connector):
       label = account.get('description', account['type'])
 
       balance = await http.get_json(f'{API_URL}/balance', params={'account_id': account['id']}, headers=headers)
-      holdings.append(Holding(balance['currency'], balance['balance'] / 100, name=label))
+      holdings.append(Holding(balance['currency'], from_units(balance['balance'], 2), name=label))
 
       if self.param('include_pots', True):
         pots = await http.get_json(f'{API_URL}/pots', params={'current_account_id': account['id']}, headers=headers)
         for pot in pots['pots']:
           if not pot.get('deleted'):
-            holdings.append(Holding(pot['currency'], pot['balance'] / 100, name=f'Pot: {pot["name"]}'))
+            holdings.append(Holding(pot['currency'], from_units(pot['balance'], 2), name=f'Pot: {pot["name"]}'))
 
     return holdings
 

@@ -4,7 +4,7 @@ import os
 from networth import lunchflow
 from networth.config import ConfigError
 from networth.connectors.base import Connector, Field, connector
-from networth.models import Holding
+from networth.models import Holding, to_decimal
 
 
 @connector('lunchflow')
@@ -43,4 +43,4 @@ class LunchFlow(Connector):
   async def _balance(self, account_id: str, key: str) -> Holding:
     res = await lunchflow.get(f'/accounts/{account_id}/balance', key)
     balance = res['balance']
-    return Holding(balance['currency'] or 'GBP', float(balance['amount']))
+    return Holding(balance['currency'] or 'GBP', to_decimal(balance['amount']))

@@ -1,8 +1,9 @@
 import ccxt.async_support as ccxt
+from decimal import Decimal
 
 from networth.config import ConfigError
 from networth.connectors.base import Connector, Field, connector
-from networth.models import Holding
+from networth.models import Holding, to_decimal
 
 
 @connector('exchange')
@@ -48,10 +49,10 @@ class Exchange(Connector):
     finally:
       await client.close()
 
-    totals: dict[str, float] = {}
+    totals: dict[str, Decimal] = {}
     for balance in balances:
       for asset, amount in balance['total'].items():
         if amount:
-          totals[asset] = totals.get(asset, 0) + amount
+          totals[asset] = totals.get(asset, 0) + to_decimal(amount)  # ccxt reports floats
 
     return [Holding(asset, amount) for asset, amount in totals.items()]

@@ -1,3 +1,5 @@
+from decimal import Decimal
+
 import pytest
 
 from networth.config import AccountConfig, ConfigError
@@ -23,7 +25,7 @@ SUMMARY_HTML = '''
 
 
 def test_parse_cash():
-  assert parse_cash(SUMMARY_HTML) == pytest.approx(2345.67)
+  assert parse_cash(SUMMARY_HTML) == Decimal('2345.67')
 
 
 def test_parse_cash_missing():
@@ -51,10 +53,10 @@ def test_parse_holdings_strips_currency_symbols():
   [row] = parse_holdings(HOLDINGS_HTML)
   assert row['ticker'] == 'VWRL'
   assert row['stock_name'] == 'Vanguard FTSE All-World'
-  assert row['units'] == pytest.approx(1234.5)
-  assert row['price_pence'] == pytest.approx(10512.0)
-  assert row['value_gbp'] == pytest.approx(129770.64)
-  assert row['cost_gbp'] == pytest.approx(100000.0)
+  assert row['units'] == Decimal('1234.5')
+  assert row['price_pence'] == Decimal('10512.00')
+  assert row['value_gbp'] == Decimal('129770.64')
+  assert row['cost_gbp'] == Decimal('100000.00')
 
 
 def test_parse_holdings_empty_account():

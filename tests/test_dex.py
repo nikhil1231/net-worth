@@ -1,4 +1,6 @@
 import asyncio
+from decimal import Decimal
+
 import pytest
 
 from networth import reports
@@ -23,7 +25,7 @@ def test_intentx_open_positions_do_not_misreport_collateral_as_equity(monkeypatc
 def test_drift_claim_subtracts_claimed_and_is_excluded_from_total(tmp_path):
   rows = [{'claimant': 'mrq', 'claimable_amount': '3246374', 'claimed_amount': '1000000'}]
   quantity = dex.unclaimed_dfx(rows, 'mrq')
-  assert quantity == pytest.approx(2.246374)
+  assert quantity == Decimal('2.246374')
   with pytest.raises(RuntimeError, match='mismatch'):
     dex.unclaimed_dfx(rows, 'other')
   holding = Holding('DFX-CLAIM', quantity)
@@ -98,5 +100,5 @@ def test_wallet_price_uses_combined_contract_values_not_first_empty_slot(tmp_pat
     SnapshotRow('SOL', 'crypto', Holding('JUP', 0), 0.00001, 0, ts),
     SnapshotRow('SOL', 'crypto', Holding('JUP', 50, value=16.4, currency='USD'), 0.248, 12.4, ts)])
   h = reports.summary(store, config)['accounts'][0]['holdings'][0]
-  assert h['price'] == pytest.approx(0.248)
-  assert h['value'] == 12.4
+  assert h['price'] == Decimal('0.248')
+  assert h['value'] == Decimal('12.4')

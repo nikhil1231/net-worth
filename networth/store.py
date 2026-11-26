@@ -1,6 +1,7 @@
 import json
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from decimal import Decimal
 from pathlib import Path
 from typing import Optional
 
@@ -22,15 +23,30 @@ CREATE TABLE IF NOT EXISTS snapshots (
   category TEXT NOT NULL,
   asset TEXT NOT NULL,
   name TEXT,
-  quantity DOUBLE PRECISION NOT NULL,
-  native_value DOUBLE PRECISION,
+  quantity NUMERIC NOT NULL,       -- exact: on-chain balances keep all 18 decimals
+  native_value NUMERIC,
   native_currency TEXT,
-  price_gbp DOUBLE PRECISION,
-  value_gbp DOUBLE PRECISION,
+  price_gbp NUMERIC,               -- market data, to 28 significant digits
+  value_gbp NUMERIC,               -- rounded to the penny when written (pricing.pennies); rows from before are kept as they were
   fetched_at TEXT NOT NULL,
   wallet TEXT,
   chain TEXT
 );
+-- Databases from before amounts were exact stored these as DOUBLE PRECISION: convert them once.
+-- A double casts to its 15 significant digits, which drops float noise like 0.30000000000000004.
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.columns
+             WHERE table_schema = current_schema() AND table_name = 'snapshots'
+               AND column_name IN ('quantity', 'native_value', 'price_gbp', 'value_gbp')
+               AND data_type = 'double precision') THEN
+    ALTER TABLE snapshots
+      ALTER COLUMN quantity TYPE NUMERIC USING quantity::numeric,
+      ALTER COLUMN native_value TYPE NUMERIC USING native_value::numeric,
+      ALTER COLUMN price_gbp TYPE NUMERIC USING price_gbp::numeric,
+      ALTER COLUMN value_gbp TYPE NUMERIC USING value_gbp::numeric;
+  END IF;
+END $$;
 CREATE INDEX IF NOT EXISTS snapshots_run ON snapshots (run_id);
 CREATE INDEX IF NOT EXISTS snapshots_account_run ON snapshots (account, run_id);
 
@@ -58,8 +74,8 @@ class SnapshotRow:
   account: str
   category: str
   holding: Holding
-  price_gbp: Optional[float]
-  value_gbp: Optional[float]
+  price_gbp: Optional[Decimal]
+  value_gbp: Optional[Decimal]
   fetched_at: str
 
 
@@ -148,9 +164,9 @@ class Store:
   def snapshots(self, run_id: int) -> list[Row]:
     return self.conn.execute('SELECT * FROM snapshots WHERE run_id = %s', (run_id,)).fetchall()
 
-  def run_total(self, run_id: int) -> float:
+  def run_total(self, run_id: int) -> Decimal:
     row = self.conn.execute('SELECT SUM(value_gbp) FROM snapshots WHERE run_id = %s', (run_id,)).fetchone()
-    return row[0] or 0.0
+    return row[0] or Decimal(0)
 
   def totals_since(self, since: str, group_by: str, cash_category: str = 'cash',
                    cash_assets: frozenset[str] | set[str] = frozenset()) -> list[Row]:

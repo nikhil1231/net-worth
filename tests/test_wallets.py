@@ -1,5 +1,7 @@
 import asyncio
 import os
+from decimal import Decimal
+
 from networth.config import AccountConfig, Config
 from networth.models import Holding
 from networth.store import Store, SnapshotRow, now
@@ -51,7 +53,7 @@ def test_solana_token_programs_stay_with_owner(monkeypatch, tmp_path):
   async def rpc(self, method, params):
     if method == 'getBalance': return {'value': 10**9}
     amount = (2 if params[0] == 'a' else 7) if params[1]['programId'] == TOKEN_PROGRAMS[0] else 1
-    return {'value': [{'account': {'data': {'parsed': {'info': {'mint': 'mint', 'tokenAmount': {'uiAmount': amount}}}}}}]}
+    return {'value': [{'account': {'data': {'parsed': {'info': {'mint': 'mint', 'tokenAmount': {'amount': str(amount * 10**6), 'decimals': 6, 'uiAmount': float(amount)}}}}}}]}
   monkeypatch.setattr(SolanaWallet, '_rpc', rpc)
   account = AccountConfig('SOL', 'solana', 'crypto', 15, {'addresses': ['a', 'b'], 'tokens': [{'symbol': 'USDC', 'mint': 'mint'}]})
   h = asyncio.run(SolanaWallet(account, tmp_path).fetch())
@@ -68,10 +70,10 @@ def test_wallet_detail_separates_usdc_owners_and_preserves_token_links(tmp_path)
     Holding('USDC', 2979.964906, wallet=addresses[1], chain='Ethereum'),
     Holding('USDC', 10, wallet=addresses[0], chain='Base'),
   ]
-  store.write_run(ts, [SnapshotRow('EVM', 'crypto', h, 0.75, h.quantity * 0.75, ts) for h in holdings])
+  store.write_run(ts, [SnapshotRow('EVM', 'crypto', h, Decimal('0.75'), h.quantity * Decimal('0.75'), ts) for h in holdings])
   detail = reports.crypto_details(store, config, 'EVM', wallet=addresses[0])
   assert detail['parent_account'] == 'EVM'
-  assert detail['holdings'][0]['quantity'] == 425.110072
+  assert detail['holdings'][0]['quantity'] == Decimal('425.110072')
   assert {h['wallet'] for h in detail['holdings'][0]['locations']} == {addresses[0]}
   assert {h['chain'] for h in detail['holdings'][0]['locations']} == {'Ethereum', 'Base'}
   combined = reports.summary(store, config)['accounts'][0]['holdings'][0]

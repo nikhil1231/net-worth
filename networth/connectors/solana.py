@@ -1,8 +1,9 @@
 import asyncio
+from decimal import Decimal
 
 from networth import http
 from networth.connectors.base import Connector, Field, connector
-from networth.models import Holding
+from networth.models import Holding, from_units
 from networth.connectors.token_prices import token_usd_price
 
 DEFAULT_RPC = 'https://api.mainnet-beta.solana.com'
@@ -36,7 +37,7 @@ class SolanaWallet(Connector):
     lamports = await asyncio.gather(*[
       self._rpc('getBalance', [addr, {'commitment': 'finalized'}]) for addr in addresses
     ])
-    holdings = [Holding('SOL', r['value'] / 1e9, wallet=addr, chain='Solana')
+    holdings = [Holding('SOL', from_units(r['value'], 9), wallet=addr, chain='Solana')
                 for addr, r in zip(addresses, lamports)]
 
     if tokens:
@@ -47,11 +48,12 @@ class SolanaWallet(Connector):
         for addr in addresses for program in TOKEN_PROGRAMS
       ])
       for i, addr in enumerate(addresses):
-        amounts: dict[str, float] = {}
+        amounts: dict[str, Decimal] = {}
         for r in results[i * len(TOKEN_PROGRAMS):(i + 1) * len(TOKEN_PROGRAMS)]:
           for acc in r['value']:
             info = acc['account']['data']['parsed']['info']
-            amounts[info['mint']] = amounts.get(info['mint'], 0) + (info['tokenAmount']['uiAmount'] or 0)
+            amount = info['tokenAmount']  # the raw integer string, not the float uiAmount
+            amounts[info['mint']] = amounts.get(info['mint'], 0) + from_units(amount['amount'], amount['decimals'])
         for token in tokens:
           quantity = amounts.get(token['mint'], 0)
           value = await token_usd_price(token, quantity)

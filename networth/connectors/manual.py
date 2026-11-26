@@ -1,5 +1,5 @@
 from networth.connectors.base import Connector, Field, connector
-from networth.models import Holding
+from networth.models import Holding, to_decimal
 
 
 @connector('manual')
@@ -23,8 +23,8 @@ class Manual(Connector):
 
   async def fetch(self):
     if 'value' in self.account.params:
-      return [Holding(self.param('currency', 'GBP'), float(self.param('value')))]
+      return [Holding(self.param('currency', 'GBP'), to_decimal(self.param('value')))]
     return [
-      Holding(h['asset'], float(h['quantity']), name=h.get('name'))
+      Holding(h['asset'], to_decimal(h['quantity']), name=h.get('name'))
       for h in self.param('holdings')
     ]

@@ -1,4 +1,5 @@
 import asyncio
+from decimal import Decimal
 
 import pytest
 from fastapi.testclient import TestClient
@@ -329,7 +330,7 @@ def test_balance_connector_keeps_lunchflow_sign(tmp_path, monkeypatch):
   monkeypatch.setattr(lunchflow.http, 'get_json', get)
   card = get_connector_class('lunchflow')(AccountConfig('Amex', 'lunchflow', 'liabilities', 60, {'account_id': 42}), tmp_path)
   [holding] = asyncio.run(card.fetch())
-  assert (holding.asset, holding.quantity) == ('GBP', -91.94)
+  assert (holding.asset, holding.quantity) == ('GBP', Decimal('-91.94'))
   assert calls == [(lunchflow.BASE_URL + '/accounts/42/balance', {'x-api-key': 'env-key'})]
 
 

@@ -1,7 +1,8 @@
+from decimal import Decimal
 from typing import Optional
 
 from networth import http
-from networth.models import Holding
+from networth.models import Holding, pennies, to_decimal
 
 # Coinbase's public rates endpoint covers fiat and ~650 crypto assets in one unauthenticated call.
 RATES_URL = 'https://api.coinbase.com/v2/exchange-rates'
@@ -15,30 +16,39 @@ ALIASES = {
 
 
 class PriceBook:
-  """GBP prices for assets, from rates expressed as units of asset per 1 GBP."""
+  """
+  GBP prices for assets, from rates expressed as units of asset per 1 GBP (Coinbase sends them as strings).
 
-  def __init__(self, rates: dict[str, float]):
-    self.rates = {k.upper(): float(v) for k, v in rates.items()}
-    self.rates[BASE_CURRENCY] = 1.0
+  Values are divided by the rate rather than multiplied by a rounded price, and rounded to the penny once.
+  A price is 1 / rate to 28 significant digits: market data, as exact as it is ever going to be.
+  """
 
-  def price(self, asset: str) -> Optional[float]:
+  def __init__(self, rates: dict[str, str | Decimal | float]):
+    self.rates = {k.upper(): to_decimal(v) for k, v in rates.items()}
+    self.rates[BASE_CURRENCY] = Decimal(1)
+
+  def _rate(self, asset: str) -> Optional[Decimal]:
     asset = asset.upper()
     rate = self.rates.get(ALIASES.get(asset, asset))
+    return rate if rate else None
+
+  def price(self, asset: str) -> Optional[Decimal]:
+    rate = self._rate(asset)
     return 1 / rate if rate else None
 
-  def value(self, holding: Holding) -> tuple[Optional[float], Optional[float]]:
-    """Returns (price per unit in GBP, total value in GBP); None where unknown."""
+  def value(self, holding: Holding) -> tuple[Optional[Decimal], Optional[Decimal]]:
+    """Returns (price per unit in GBP, total value in GBP to the penny); None where unknown."""
     if holding.value is not None:
-      fx = self.price(holding.currency or BASE_CURRENCY)
-      if fx is None:
+      rate = self._rate(holding.currency or BASE_CURRENCY)
+      if rate is None:
         return None, None
-      value = holding.value * fx
-      return (value / holding.quantity if holding.quantity else None), value
+      value = holding.value / rate
+      return (value / holding.quantity if holding.quantity else None), pennies(value)
 
-    price = self.price(holding.asset)
-    if price is None:
+    rate = self._rate(holding.asset)
+    if rate is None:
       return None, None
-    return price, holding.quantity * price
+    return 1 / rate, pennies(holding.quantity / rate)
 
 
 async def fetch_price_book() -> PriceBook:

@@ -1,7 +1,7 @@
 """Optional exact-contract USD quotes; never guesses a token from its ticker."""
 import logging
-import math
 from networth import http
+from networth.models import to_decimal
 
 log = logging.getLogger(__name__)
 
@@ -40,7 +40,10 @@ async def _quote(token):
     raw = data.get('exchange_rate')
   if raw is None:
     raise RuntimeError(f"No exact-contract quote for {token['symbol']}")
-  price = float(raw)
-  if not math.isfinite(price) or price <= 0:
+  try:
+    price = to_decimal(raw)
+  except (ArithmeticError, TypeError, ValueError):
+    price = None
+  if price is None or price <= 0:
     raise RuntimeError(f"Invalid quote for {token['symbol']}")
   return price

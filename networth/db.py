@@ -1,8 +1,8 @@
-"""Postgres access: one shared psycopg connection, and rows that index by position or by column name."""
+"""Postgres access: one shared psycopg connection, and rows that index by position or by column name.
+NUMERIC columns load as Decimal (psycopg's default), so money read back is exactly what was written."""
 import threading
 
 import psycopg
-from psycopg.adapt import Loader
 from psycopg.types.numeric import Int8Dumper
 
 
@@ -35,13 +35,6 @@ def _row_factory(cursor):
   return _row_classes[names]
 
 
-class _NumericLoader(Loader):
-  """numeric -> int when it has no fraction (a SUM of integers), else float, rather than Decimal."""
-  def load(self, data):
-    text = bytes(data).decode()
-    return int(text) if text.lstrip('-').isdigit() else float(text)
-
-
 class Db:
   """
   One long-lived connection shared by every thread. Each statement commits by itself; `with db:` groups
@@ -58,7 +51,6 @@ class Db:
   def _connect(self):
     self.pg = psycopg.connect(self.url, autocommit=True, connect_timeout=10, options='-c timezone=UTC',
                               row_factory=_row_factory)
-    self.pg.adapters.register_loader('numeric', _NumericLoader)
     self.pg.adapters.register_dumper(bool, Int8Dumper)  # flags are stored as 0/1 integers
 
   def _alive(self):

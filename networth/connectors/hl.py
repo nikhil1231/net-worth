@@ -8,7 +8,7 @@ from bs4 import BeautifulSoup
 
 from networth.config import ConfigError
 from networth.connectors.base import Connector, Field, connector
-from networth.models import Holding
+from networth.models import Holding, to_decimal
 
 BASE_URL = 'https://online.hl.co.uk'
 
@@ -201,11 +201,11 @@ def parse_holdings_row(row):
 
 
 def _number(text):
-  """'£1,234.56', '123.4p', '1,000' -> float."""
+  """'£1,234.56', '123.4p', '1,000' -> Decimal."""
   cleaned = re.sub(r'[£p,\s]', '', text)
   try:
-    return float(cleaned)
-  except ValueError:
+    return to_decimal(cleaned)
+  except (ArithmeticError, ValueError):
     raise RuntimeError(f'HL: could not read a number from {text!r} - page layout may have changed') from None
 
 
